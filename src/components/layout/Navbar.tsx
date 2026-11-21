@@ -22,7 +22,7 @@ interface Props {
 }
 
 export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi, onSearchSelect }) => {
-  const { user, logout, switchUserRole } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
   const { notifications, unreadNotifsCount, markNotificationRead, markAllNotificationsRead, courses, notes, assignments } = useData();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -186,8 +186,8 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi, onS
 
         {/* Right Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* AI Assistant Quick Pill (Visible to Admin or for testing) */}
-          {user?.role === 'admin' && (
+          {/* AI Assistant Quick Pill (Visible exclusively to Admin) */}
+          {isAdmin && (
             <button
               onClick={onOpenAi}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-royal-600 to-indigo-600 hover:from-royal-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-sm transition group"
@@ -197,31 +197,6 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi, onS
               <Sparkles className="w-3 h-3 text-amber-300" />
             </button>
           )}
-
-          {/* Quick Role Tester Switcher (Helpful toggle) */}
-          <div className="hidden lg:flex items-center bg-navy-950 p-1 rounded-xl border border-navy-800 text-[11px]">
-            <button
-              onClick={() => switchUserRole('student')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition ${
-                user?.role === 'student'
-                  ? 'bg-royal-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Student View
-            </button>
-            <button
-              onClick={() => switchUserRole('admin')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
-                user?.role === 'admin'
-                  ? 'bg-royal-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Shield className="w-3 h-3 text-royal-300" />
-              Admin View
-            </button>
-          </div>
 
           {/* Notifications Bell */}
           <div className="relative">
@@ -345,7 +320,7 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi, onS
                     <span>My Profile</span>
                   </button>
 
-                  {user?.role === 'admin' && (
+                  {isAdmin && (
                     <button
                       onClick={() => {
                         setActiveTab('admin');

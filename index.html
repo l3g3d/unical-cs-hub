@@ -6,6 +6,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>UNICAL CS HUB — Computer Science Academic Portal</title>
     <meta name="description" content="Official academic web application for 100 level students of the Department of Computer Science, University of Calabar, Nigeria." />
+    <!-- Disable Netlify collaborative drawer & badge -->
+    <meta name="netlify-disable-drawer" content="true" />
+    <script>
+      window.__NETLIFY_DRAWER_DISABLED__ = true;
+      (function() {
+        function removeNetlifyBadge() {
+          const selectors = [
+            '[data-netlify-drawer]',
+            '#netlify-drawer',
+            '.netlify-drawer',
+            '.netlify-badge',
+            'iframe[src*="netlify"]',
+            'iframe[title*="Netlify"]',
+            'div[id^="netlify"]'
+          ];
+          selectors.forEach(function(s) {
+            document.querySelectorAll(s).forEach(function(el) { el.remove(); });
+          });
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', removeNetlifyBadge);
+        } else {
+          removeNetlifyBadge();
+        }
+        try {
+          new MutationObserver(removeNetlifyBadge).observe(document.documentElement, { childList: true, subtree: true });
+        } catch(e) {}
+      })();
+    </script>
     <!-- Preconnect for fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

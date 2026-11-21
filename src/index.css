@@ -50,3 +50,24 @@
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
 }
+
+/* Suppress Netlify Drawer & Powered by Netlify badges */
+[data-netlify-drawer],
+#netlify-drawer,
+.netlify-drawer,
+.netlify-badge,
+div[id^="netlify"],
+iframe[src*="netlify"],
+iframe[title*="Netlify"],
+div[class*="netlify"],
+div[class*="Netlify"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+  z-index: -9999 !important;
+}

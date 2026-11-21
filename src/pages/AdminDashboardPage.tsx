@@ -48,8 +48,6 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
     assignments,
     createAssignment,
     deleteAssignment,
-    submissions,
-    gradeSubmission,
     payments,
     approvePayment,
     rejectPayment,
@@ -78,6 +76,14 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
   const [noteDesc, setNoteDesc] = useState('');
   const [noteFile, setNoteFile] = useState<File | null>(null);
   const [noteUploadedSuccess, setNoteUploadedSuccess] = useState(false);
+
+  // Assignment creation form state
+  const [assignCourse, setAssignCourse] = useState('COS101');
+  const [assignTitle, setAssignTitle] = useState('');
+  const [assignInstructions, setAssignInstructions] = useState('');
+  const [assignDueDate, setAssignDueDate] = useState('');
+  const [assignMaxScore, setAssignMaxScore] = useState(10);
+  const [assignSuccess, setAssignSuccess] = useState(false);
 
   // Edit course rep form
   const [repName, setRepName] = useState(courseRep.fullName);
@@ -124,6 +130,26 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
     setNoteDesc('');
     setNoteFile(null);
     setTimeout(() => setNoteUploadedSuccess(false), 3000);
+  };
+
+  const handleCreateAssignmentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignTitle.trim() || !assignInstructions.trim()) return;
+
+    createAssignment({
+      courseCode: assignCourse,
+      title: assignTitle.trim(),
+      instructions: assignInstructions.trim(),
+      dueDate: assignDueDate.trim() || 'Next Lecture Session',
+      maxScore: Number(assignMaxScore) || 10,
+      createdBy: courseRep.fullName || 'Course Representative',
+    });
+
+    setAssignSuccess(true);
+    setAssignTitle('');
+    setAssignInstructions('');
+    setAssignDueDate('');
+    setTimeout(() => setAssignSuccess(false), 3000);
   };
 
   const handleSaveCourseRep = (e: React.FormEvent) => {
@@ -228,7 +254,7 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
           }`}
         >
           <FileCheck2 className="w-3.5 h-3.5" />
-          <span>Submissions ({submissions.length})</span>
+          <span>Course Assignments ({assignments.length})</span>
         </button>
 
         <button
@@ -640,58 +666,166 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
         </div>
       )}
 
-      {/* TAB 5: ASSIGNMENTS & SUBMISSIONS */}
+      {/* TAB 5: COURSE ASSIGNMENTS */}
       {activeAdminTab === 'assignments' && (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-card space-y-4">
-          <h3 className="text-base font-bold text-navy-950">Student Assignment Submissions ({submissions.length})</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] border-b border-slate-200">
-                <tr>
-                  <th className="py-2.5 px-3">Student</th>
-                  <th className="py-2.5 px-3">Matric No</th>
-                  <th className="py-2.5 px-3">Assignment ID</th>
-                  <th className="py-2.5 px-3">File</th>
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Score</th>
-                  <th className="py-2.5 px-3 text-right">Download</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {submissions.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-slate-400">
-                      No student submissions yet.
-                    </td>
-                  </tr>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Create Assignment Form */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-card h-fit">
+              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+                <FileCheck2 className="w-5 h-5 text-royal-600" />
+                <h3 className="text-base font-bold text-navy-950">Post New Course Assignment</h3>
+              </div>
+
+              {assignSuccess && (
+                <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-xl flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span>Assignment published successfully! It is now visible to all students.</span>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateAssignmentSubmit} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Select Course</label>
+                  <select
+                    value={assignCourse}
+                    onChange={(e) => setAssignCourse(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-medium"
+                  >
+                    {courses.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} - {c.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Assignment Title / Topic</label>
+                  <input
+                    type="text"
+                    value={assignTitle}
+                    onChange={(e) => setAssignTitle(e.target.value)}
+                    placeholder="e.g. Assignment 1: Logic Gates & Truth Tables"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Due Date / Time</label>
+                    <input
+                      type="text"
+                      value={assignDueDate}
+                      onChange={(e) => setAssignDueDate(e.target.value)}
+                      placeholder="e.g. Monday, 10:00 AM"
+                      required
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Total Marks</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={assignMaxScore}
+                      onChange={(e) => setAssignMaxScore(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Questions, Instructions & Physical Submission Details
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={assignInstructions}
+                    onChange={(e) => setAssignInstructions(e.target.value)}
+                    placeholder="Enter assignment questions or instructions (e.g. 'Answer Questions 1 to 4 on foolscap paper. Submit physical hardcopy scripts to Course Rep Divine before Monday 10:00 AM lecture at Science Lecture Theatre.')..."
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-royal-600 hover:bg-royal-500 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Publish Assignment to Students</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Active Assignments List */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-navy-950">Active Departmental Assignments ({assignments.length})</h3>
+                  <p className="text-xs text-slate-500">Students view these tasks and submit physical scripts in class.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {assignments.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center text-slate-400">
+                    <FileCheck2 className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                    <p className="text-xs font-medium">No course assignments posted yet.</p>
+                  </div>
                 ) : (
-                  submissions.map((sub) => (
-                    <tr key={sub.id}>
-                      <td className="py-2.5 px-3 font-semibold text-slate-900">{sub.studentName}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{sub.matricNumber}</td>
-                      <td className="py-2.5 px-3 text-slate-700">{sub.assignmentId}</td>
-                      <td className="py-2.5 px-3 text-royal-700 font-medium">{sub.fileName}</td>
-                      <td className="py-2.5 px-3 text-slate-500">{new Date(sub.submittedAt).toLocaleDateString()}</td>
-                      <td className="py-2.5 px-3 font-bold text-emerald-700">
-                        {sub.grade !== undefined ? `${sub.grade} marks` : 'Ungraded'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <a
-                          href={sub.fileUrl}
-                          download={sub.fileName}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-royal-600 font-bold hover:underline"
+                  assignments.map((assign) => (
+                    <div
+                      key={assign.id}
+                      className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <span className="font-extrabold text-royal-800 bg-royal-50 border border-royal-200 px-2.5 py-0.5 rounded text-xs">
+                              {assign.courseCode}
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                              Due: {assign.dueDate}
+                            </span>
+                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                              {assign.maxScore} Marks
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-navy-950">{assign.title}</h4>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to delete assignment "${assign.title}"?`)) {
+                              deleteAssignment(assign.id);
+                            }
+                          }}
+                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition flex-shrink-0"
+                          title="Delete Assignment"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Get File</span>
-                        </a>
-                      </td>
-                    </tr>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 whitespace-pre-line leading-relaxed">
+                        {assign.instructions}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                        <span>Posted by: <strong className="text-slate-600">{assign.createdBy}</strong></span>
+                        <span>Date: {new Date(assign.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
                   ))
                 )}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
         </div>
       )}

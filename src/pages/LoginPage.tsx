@@ -44,21 +44,6 @@ export const LoginPage: React.FC<Props> = ({
     }
   };
 
-  // Quick autofill buttons for testing
-  const autofill = (type: 'student' | 'admin' | 'unpaid') => {
-    if (type === 'admin') {
-      setEmail('divineinyang636@gmail.com');
-      setPassword('admin123');
-    } else if (type === 'student') {
-      setEmail('emeka@unical.edu.ng');
-      setPassword('student123');
-    } else {
-      setEmail('fresh@unical.edu.ng');
-      setPassword('student123');
-    }
-    setError(null);
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
@@ -75,32 +60,6 @@ export const LoginPage: React.FC<Props> = ({
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 sm:px-10 shadow-card rounded-2xl border border-slate-200">
-          {/* Quick Demo Picker */}
-          <div className="mb-6 p-3 bg-royal-50/70 border border-royal-200/60 rounded-xl text-xs">
-            <div className="flex items-center gap-1.5 font-bold text-royal-900 mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-royal-600" />
-              <span>One-Click Instant Login (Testing Shortcuts):</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => autofill('admin')}
-                className="bg-white hover:bg-royal-100/50 text-slate-800 border border-slate-200 font-medium px-2 py-1.5 rounded-lg text-[11px] transition text-left"
-              >
-                👑 <span className="font-bold">Course Rep / Admin</span>
-                <span className="block text-[10px] text-slate-500">Divine Inyang</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => autofill('student')}
-                className="bg-white hover:bg-royal-100/50 text-slate-800 border border-slate-200 font-medium px-2 py-1.5 rounded-lg text-[11px] transition text-left"
-              >
-                🎓 <span className="font-bold">Student (Paid)</span>
-                <span className="block text-[10px] text-slate-500">Emeka Okon</span>
-              </button>
-            </div>
-          </div>
-
           {error && (
             <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />

@@ -22,9 +22,10 @@ import { ComplaintsPage } from './pages/ComplaintsPage';
 import { PaymentPage } from './pages/PaymentPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { ShieldAlert } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isAdmin, isLoading } = useAuth();
 
   // Navigation tab state
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -163,9 +164,27 @@ const AppContent: React.FC = () => {
           {activeTab === 'profile' && <ProfilePage />}
 
           {activeTab === 'admin' && (
-            <AdminDashboardPage
-              onOpenAi={() => setIsAiModalOpen(true)}
-            />
+            isAdmin ? (
+              <AdminDashboardPage
+                onOpenAi={() => setIsAiModalOpen(true)}
+              />
+            ) : (
+              <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-card text-center max-w-lg mx-auto my-12">
+                <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-200">
+                  <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-navy-950 mb-2">Access Restricted</h2>
+                <p className="text-xs text-slate-600 mb-6 leading-relaxed">
+                  The departmental administrator area is exclusively reserved for the 100 Level Course Representative (Divine Christopher Inyang). Your student account does not have permission to view this section.
+                </p>
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className="px-5 py-2.5 rounded-xl bg-royal-600 text-white font-semibold text-xs shadow-sm hover:bg-royal-500 transition"
+                >
+                  Return to Student Dashboard
+                </button>
+              </div>
+            )
           )}
         </main>
       </div>
@@ -179,11 +198,13 @@ const AppContent: React.FC = () => {
         onOpenAi={() => setIsAiModalOpen(true)}
       />
 
-      {/* CS HUB AI Assistant Dialog */}
-      <AiAssistantModal
-        isOpen={isAiModalOpen}
-        onClose={() => setIsAiModalOpen(false)}
-      />
+      {/* CS HUB AI Assistant Dialog (Admin Only) */}
+      {isAdmin && (
+        <AiAssistantModal
+          isOpen={isAiModalOpen}
+          onClose={() => setIsAiModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

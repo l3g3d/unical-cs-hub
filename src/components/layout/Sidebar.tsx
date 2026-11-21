@@ -21,7 +21,7 @@ interface Props {
 }
 
 export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi }) => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const isNotesLocked = user?.role === 'student' && user?.paymentStatus !== 'APPROVED';
 
   const navItems = [
@@ -34,7 +34,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi }) 
     },
     { id: 'timetable', label: 'Weekly Timetable', icon: Calendar },
     { id: 'venues', label: 'Lecture Venues', icon: MapPin },
-    { id: 'assignments', label: 'Assignment Centre', icon: FileCheck2 },
+    { id: 'assignments', label: 'Course Assignments', icon: FileCheck2 },
     { id: 'payment', label: '₦500 Access Payment', icon: CreditCard },
     { id: 'complaints', label: 'Customer Service', icon: HelpCircle },
     { id: 'profile', label: 'My Profile', icon: User },
@@ -77,7 +77,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi }) 
         })}
 
         {/* Admin Navigation Section */}
-        {user?.role === 'admin' && (
+        {isAdmin && (
           <div className="pt-4 mt-4 border-t border-navy-800 space-y-1">
             <div className="px-3.5 pb-2 text-[10px] uppercase font-bold tracking-wider text-royal-400">
               Administration Area

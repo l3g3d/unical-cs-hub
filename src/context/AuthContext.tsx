@@ -2,8 +2,16 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, PaymentStatus, UserRole } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
+export const ADMIN_EMAIL = 'divineinyang636@gmail.com';
+
+export const isAdminUser = (user: UserProfile | null): boolean => {
+  if (!user) return false;
+  return user.role === 'admin' && user.email.trim().toLowerCase() === ADMIN_EMAIL;
+};
+
 interface AuthContextType {
   user: UserProfile | null;
+  isAdmin: boolean;
   isLoading: boolean;
   registeredUsers: UserProfile[];
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
@@ -13,16 +21,15 @@ interface AuthContextType {
   sendForgotPasswordOtp: (email: string) => Promise<{ success: boolean; otp?: string; error?: string }>;
   resetPasswordWithOtp: (email: string, otp: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   updateProfile: (updates: Partial<UserProfile>) => void;
-  switchUserRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Initial preloaded users
+// Initial registered admin account
 const DEFAULT_USERS: UserProfile[] = [
   {
     id: 'user-admin-divine',
-    email: 'divineinyang636@gmail.com',
+    email: ADMIN_EMAIL,
     fullName: 'Divine Christopher Inyang',
     matricNumber: '23/095144000',
     role: 'admin',
@@ -30,37 +37,6 @@ const DEFAULT_USERS: UserProfile[] = [
     paymentStatus: 'APPROVED',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
     createdAt: '2026-11-01T08:00:00Z'
-  },
-  {
-    id: 'student-emeka',
-    email: 'emeka@unical.edu.ng',
-    fullName: 'Emeka Christian Okon',
-    matricNumber: '23/095144001',
-    role: 'student',
-    isEmailVerified: true,
-    paymentStatus: 'APPROVED',
-    avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=300&q=80',
-    createdAt: '2026-11-19T15:45:00Z'
-  },
-  {
-    id: 'student-blessing',
-    email: 'blessing@unical.edu.ng',
-    fullName: 'Blessing Effiong Bassey',
-    matricNumber: '23/095144015',
-    role: 'student',
-    isEmailVerified: true,
-    paymentStatus: 'PENDING',
-    createdAt: '2026-11-20T20:10:00Z'
-  },
-  {
-    id: 'student-fresh',
-    email: 'fresh@unical.edu.ng',
-    fullName: 'David Sunday Udoh',
-    matricNumber: '23/095144099',
-    role: 'student',
-    isEmailVerified: true,
-    paymentStatus: 'UNPAID',
-    createdAt: '2026-11-20T21:00:00Z'
   }
 ];
 
@@ -73,7 +49,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [otpStore, setOtpStore] = useState<Record<string, { code: string; expiresAt: number; meta?: any }>>({});
 
   useEffect(() => {
-    // Load users and current active session from localStorage
     try {
       const storedUsersRaw = localStorage.getItem('unical_hub_registered_users');
       let usersList: UserProfile[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
@@ -85,45 +60,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const activeSessionRaw = localStorage.getItem('unical_hub_current_user');
       if (activeSessionRaw) {
-        setUser(JSON.parse(activeSessionRaw));
+        const parsed = JSON.parse(activeSessionRaw);
+        // STRICT ROLE ENFORCEMENT: Only divineinyang636@gmail.com can be admin
+        if (parsed.email && parsed.email.trim().toLowerCase() === ADMIN_EMAIL) {
+          parsed.role = 'admin';
+        } else {
+          parsed.role = 'student';
+        }
+        setUser(parsed);
       } else {
-        // Default to the Course Rep (Admin) so the user can test the admin & AI assistant immediately
-        setUser(usersList[0]);
-        localStorage.setItem('unical_hub_current_user', JSON.stringify(usersList[0]));
+        // Visitors start logged out! Never auto-login as admin
+        setUser(null);
       }
     } catch (e) {
       console.error('Auth initialization error:', e);
-      setUser(DEFAULT_USERS[0]);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Normal Login (Email + Password)
+  // Login (Email + Password)
   const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Check if trying to log in as admin
+      const isTryingAdmin = normalizedEmail === ADMIN_EMAIL;
+
       // If live Supabase configured, attempt Supabase login
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-        if (error) {
-          // If error in live Supabase, check local list
-          console.warn('Supabase auth failed, trying local store:', error.message);
-        } else if (data.user) {
-          // fetch user profile
+        const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password: pass });
+        if (!error && data.user) {
           const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-          const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', data.user.id).single();
           const { data: payData } = await supabase.from('student_entitlements').select('access_granted').eq('student_id', data.user.id).single();
 
           const authedUser: UserProfile = {
             id: data.user.id,
-            email: data.user.email || email,
-            fullName: profile?.full_name || email.split('@')[0],
+            email: data.user.email || normalizedEmail,
+            fullName: profile?.full_name || normalizedEmail.split('@')[0],
             matricNumber: profile?.matric_number || '23/095144000',
-            role: (roleData?.role as UserRole) || 'student',
+            role: isTryingAdmin ? 'admin' : 'student',
             avatarUrl: profile?.avatar_url,
             isEmailVerified: true,
-            paymentStatus: payData?.access_granted ? 'APPROVED' : 'UNPAID',
+            paymentStatus: isTryingAdmin ? 'APPROVED' : payData?.access_granted ? 'APPROVED' : 'UNPAID',
             createdAt: data.user.created_at
           };
           setUser(authedUser);
@@ -132,13 +113,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Local / Offline authentication
-      const normalizedEmail = email.trim().toLowerCase();
-      const existing = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
+      // Local authentication check
+      let existing = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
+
+      // If admin logging in for first time locally
+      if (!existing && isTryingAdmin) {
+        existing = DEFAULT_USERS[0];
+      }
 
       if (!existing) {
-        return { success: false, error: 'No student or admin account found with this email.' };
+        return { success: false, error: 'No student account found with this email. Please click "Register Account".' };
       }
+
+      // Enforce role strictly
+      existing.role = isTryingAdmin ? 'admin' : 'student';
 
       setUser(existing);
       localStorage.setItem('unical_hub_current_user', JSON.stringify(existing));
@@ -187,7 +175,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }));
 
-    // If Supabase is configured with SMTP, call signUp
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.auth.signUp({
@@ -225,13 +212,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Invalid verification code. Please check and try again.' };
     }
 
-    // Create student user
+    // Students are ALWAYS registered as 'student' role. NEVER admin!
     const newUser: UserProfile = {
       id: 'student-' + Date.now(),
       email: normalizedEmail,
       fullName: record.meta?.fullName || 'Student',
       matricNumber: record.meta?.matricNumber || '23/095144' + Math.floor(100 + Math.random() * 900),
-      role: 'student', // Admin role cannot be self-selected!
+      role: 'student', // Admin role cannot be created via registration
       isEmailVerified: true,
       paymentStatus: 'UNPAID',
       createdAt: new Date().toISOString()
@@ -241,11 +228,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRegisteredUsers(updated);
     localStorage.setItem('unical_hub_registered_users', JSON.stringify(updated));
 
-    // Log the student in
     setUser(newUser);
     localStorage.setItem('unical_hub_current_user', JSON.stringify(newUser));
 
-    // Clear OTP
     setOtpStore((prev) => {
       const next = { ...prev };
       delete next[normalizedEmail];
@@ -255,7 +240,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
-  // Forgot Password OTP flow
   const sendForgotPasswordOtp = async (email: string): Promise<{ success: boolean; otp?: string; error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
     const userExists = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
@@ -295,7 +279,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Incorrect 6-digit OTP code.' };
     }
 
-    // Invalidate recovery code
     setOtpStore((prev) => {
       const next = { ...prev };
       delete next['reset_' + normalizedEmail];
@@ -316,17 +299,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('unical_hub_registered_users', JSON.stringify(all));
   };
 
-  // Easy switcher for testing between Student & Course Rep (Admin)
-  const switchUserRole = (targetRole: UserRole) => {
-    const targetUser = registeredUsers.find((u) => u.role === targetRole) || (targetRole === 'admin' ? DEFAULT_USERS[0] : DEFAULT_USERS[1]);
-    setUser(targetUser);
-    localStorage.setItem('unical_hub_current_user', JSON.stringify(targetUser));
-  };
+  const isAdmin = isAdminUser(user);
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        isAdmin,
         isLoading,
         registeredUsers,
         login,
@@ -335,8 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         verifyRegistrationOtp,
         sendForgotPasswordOtp,
         resetPasswordWithOtp,
-        updateProfile,
-        switchUserRole
+        updateProfile
       }}
     >
       {children}

@@ -19,7 +19,7 @@ interface Props {
 }
 
 export const MobileBottomNav: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi }) => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const isNotesLocked = user?.role === 'student' && user?.paymentStatus !== 'APPROVED';
 
   return (
@@ -74,7 +74,7 @@ export const MobileBottomNav: React.FC<Props> = ({ activeTab, setActiveTab, onOp
       </button>
 
       {/* Admin / Payment Button */}
-      {user?.role === 'admin' ? (
+      {isAdmin ? (
         <button
           onClick={() => setActiveTab('admin')}
           className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition ${
@@ -97,7 +97,7 @@ export const MobileBottomNav: React.FC<Props> = ({ activeTab, setActiveTab, onOp
       )}
 
       {/* AI Floating Button for Admin on Mobile */}
-      {user?.role === 'admin' && (
+      {isAdmin && (
         <button
           onClick={onOpenAi}
           className="fixed bottom-16 right-4 w-12 h-12 rounded-full bg-gradient-to-tr from-royal-600 to-indigo-600 text-white shadow-xl flex items-center justify-center border-2 border-white animate-bounce"
