@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Outer Ring -->
+  <circle cx="60" cy="60" r="56" fill="#0B192C" stroke="#2563EB" stroke-width="4"/>
+  <circle cx="60" cy="60" r="48" fill="#1E3E62" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="3 3"/>
+  
+  <!-- Graduation Cap & Tech Symbol -->
+  <path d="M60 28L88 42L60 56L32 42L60 28Z" fill="#3B82F6"/>
+  <path d="M38 50V68C38 78 60 86 60 86C60 86 82 78 82 68V50L60 62L38 50Z" fill="#1D4ED8"/>
+  
+  <!-- Binary / Digital Circuit Node -->
+  <circle cx="60" cy="67" r="6" fill="#60A5FA"/>
+  <path d="M50 72L42 78M70 72L78 78M60 73V81" stroke="#93C5FD" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Tassel -->
+  <path d="M88 44V60" stroke="#F59E0B" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="88" cy="62" r="2.5" fill="#F59E0B"/>
+  
+  <!-- Bottom Ribbon / Label -->
+  <rect x="22" y="92" width="76" height="16" rx="4" fill="#0B192C" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="60" y="103" text-anchor="middle" fill="#FFFFFF" font-family="Inter, sans-serif" font-size="8" font-weight="700" letter-spacing="1">UNICAL CS HUB</text>
+</svg>
