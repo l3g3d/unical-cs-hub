@@ -5,7 +5,6 @@ import { MailCheck, CheckCircle2, AlertCircle, Loader2, RefreshCw, KeyRound } fr
 interface Props {
   email: string;
   password: string;
-  initialOtp?: string;
   onVerificationSuccess: () => void;
   onBack: () => void;
 }
@@ -13,17 +12,16 @@ interface Props {
 export const VerifyOtpPage: React.FC<Props> = ({
   email,
   password,
-  initialOtp,
   onVerificationSuccess,
   onBack,
 }) => {
   const { verifyRegistrationOtp, sendRegistrationOtp } = useAuth();
 
   const [otp, setOtp] = useState('');
-  const [currentOtp, setCurrentOtp] = useState<string | undefined>(initialOtp);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [attempts, setAttempts] = useState(0);
 
   // 5-minute countdown timer
@@ -36,6 +34,14 @@ export const VerifyOtpPage: React.FC<Props> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, [timeLeft]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const cooldownTimer = setInterval(() => {
+      setResendCooldown((c) => c - 1);
+    }, 1000);
+    return () => clearInterval(cooldownTimer);
+  }, [resendCooldown]);
 
   const formatTimer = () => {
     const mins = Math.floor(timeLeft / 60);
@@ -80,14 +86,17 @@ export const VerifyOtpPage: React.FC<Props> = ({
   };
 
   const handleResend = async () => {
+    if (resendCooldown > 0 || resending) return;
     setResending(true);
     setError(null);
     try {
-      const res = await sendRegistrationOtp(email, 'Student', '23/095144...');
-      if (res.success && res.otp) {
-        setCurrentOtp(res.otp);
+      const res = await sendRegistrationOtp(email, 'Student', '23/095144');
+      if (res.success) {
         setTimeLeft(300); // Reset to 5 mins
+        setResendCooldown(60); // 60s cooldown
         setAttempts(0);
+      } else {
+        setError(res.error || 'Failed to resend code.');
       }
     } catch {
       setError('Failed to resend code.');
@@ -112,24 +121,16 @@ export const VerifyOtpPage: React.FC<Props> = ({
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 sm:px-10 shadow-card rounded-2xl border border-slate-200">
-          {/* Real-time OTP helper pill (for local testing convenience) */}
-          {currentOtp && (
-            <div className="mb-5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-emerald-600" />
-                <span>
-                  Demo OTP Code: <strong className="font-mono text-sm tracking-wider">{currentOtp}</strong>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOtp(currentOtp)}
-                className="text-[11px] font-bold text-royal-600 bg-white px-2 py-0.5 rounded border border-emerald-300 hover:bg-emerald-100"
-              >
-                Auto-fill
-              </button>
+          {/* Real Email Dispatched Status Badge */}
+          <div className="mb-5 p-3.5 rounded-xl bg-royal-50/80 border border-royal-200/80 text-xs text-royal-950 flex items-start gap-3">
+            <MailCheck className="w-5 h-5 text-royal-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-royal-950 mb-0.5">Verification Code Dispatched</div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                A 6-digit one-time verification code has been dispatched to <strong>{email}</strong>. Please check your inbox (and your Spam or Junk folder).
+              </p>
             </div>
-          )}
+          </div>
 
           {error && (
             <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center gap-2">
@@ -186,11 +187,17 @@ export const VerifyOtpPage: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleResend}
-              disabled={resending || timeLeft > 240}
-              className="text-royal-600 hover:text-royal-500 font-bold disabled:text-slate-400 flex items-center gap-1"
+              disabled={resending || resendCooldown > 0}
+              className="text-royal-600 hover:text-royal-500 font-bold disabled:text-slate-400 flex items-center gap-1.5 transition"
             >
-              <RefreshCw className={`w-3 h-3 ${resending ? 'animate-spin' : ''}`} />
-              <span>Resend Code</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
+              <span>
+                {resending
+                  ? 'Dispatching code...'
+                  : resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : 'Resend 6-Digit Code'}
+              </span>
             </button>
           </div>
         </div>

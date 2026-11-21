@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { CourseRepCard } from '../components/common/CourseRepCard';
 import { PaymentStatusBadge } from '../components/common/PaymentStatusBadge';
+import { EmailService, EmailLogEntry } from '../lib/emailService';
 import {
   Shield,
   CreditCard,
@@ -25,6 +26,9 @@ import {
   Sparkles,
   Database,
   RefreshCw,
+  Mail,
+  Send,
+  KeyRound,
 } from 'lucide-react';
 
 interface Props {
@@ -58,8 +62,15 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
   } = useData();
 
   const [activeAdminTab, setActiveAdminTab] = useState<
-    'overview' | 'payments' | 'notes' | 'timetable' | 'assignments' | 'students' | 'complaints' | 'rep' | 'audit'
+    'overview' | 'payments' | 'notes' | 'timetable' | 'assignments' | 'students' | 'complaints' | 'rep' | 'audit' | 'email'
   >('overview');
+
+  // Email & OTP Dispatcher state
+  const [emailConfig, setEmailConfig] = useState(EmailService.getConfig());
+  const [apiKeyInput, setApiKeyInput] = useState(emailConfig.apiKey || '');
+  const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>(EmailService.getLogs());
+  const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [testEmailStatus, setTestEmailStatus] = useState<string | null>(null);
 
   // Payments filter
   const [paymentFilter, setPaymentFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
@@ -162,6 +173,39 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
     });
     setRepSaved(true);
     setTimeout(() => setRepSaved(false), 3000);
+  };
+
+  const handleSendTestEmail = async () => {
+    setTestEmailLoading(true);
+    setTestEmailStatus(null);
+    try {
+      const testCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const res = await EmailService.dispatchOtpEmail({
+        to: 'divineinyang636@gmail.com',
+        fullName: 'Divine Christopher Inyang',
+        type: 'TEST_EMAIL',
+        code: testCode,
+      });
+      setEmailLogs(EmailService.getLogs());
+      if (res.success) {
+        setTestEmailStatus(`✅ Live test verification email dispatched to divineinyang636@gmail.com! (OTP: ${testCode})`);
+      } else {
+        setTestEmailStatus(`❌ Dispatch error: ${res.error}`);
+      }
+    } catch (e: any) {
+      setTestEmailStatus(`❌ Error sending test email: ${e.message}`);
+    } finally {
+      setTestEmailLoading(false);
+    }
+  };
+
+  const handleSaveEmailConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newCfg = { ...emailConfig, apiKey: apiKeyInput.trim() };
+    EmailService.saveConfig(newCfg);
+    setEmailConfig(newCfg);
+    setTestEmailStatus('✅ Email service settings saved successfully!');
+    setTimeout(() => setTestEmailStatus(null), 4000);
   };
 
   const handleConfirmReject = (id: string) => {
@@ -295,6 +339,16 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
         >
           <Database className="w-3.5 h-3.5" />
           <span>Logs & Backup</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('email')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeAdminTab === 'email' ? 'bg-royal-600 text-white' : 'text-slate-700 hover:bg-slate-100'
+          }`}
+        >
+          <Mail className="w-3.5 h-3.5" />
+          <span>Email & OTP Dispatcher</span>
         </button>
       </div>
 
@@ -1025,6 +1079,167 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 10: EMAIL & OTP DISPATCHER */}
+      {activeAdminTab === 'email' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Email Configuration & Testing */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-card space-y-5 h-fit">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Mail className="w-5 h-5 text-royal-600" />
+                  <h3 className="text-base font-bold text-navy-950">Email Service Dispatcher</h3>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Sends real 6-digit OTP verification codes to students during registration & password recovery.
+                </p>
+              </div>
+
+              {testEmailStatus && (
+                <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                  testEmailStatus.startsWith('✅')
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
+                }`}>
+                  <span>{testEmailStatus}</span>
+                </div>
+              )}
+
+              <div className="p-3.5 bg-royal-50 border border-royal-200 rounded-xl text-xs text-royal-950 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span>Netlify Serverless Dispatcher Active</span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Endpoint: <code className="bg-white px-1.5 py-0.5 rounded border border-royal-200 font-mono text-[10px]">/.netlify/functions/send-email</code>
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveEmailConfig} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Email Delivery Provider</label>
+                  <select
+                    value={emailConfig.provider}
+                    onChange={(e: any) => setEmailConfig({ ...emailConfig, provider: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-medium"
+                  >
+                    <option value="serverless">Netlify Serverless Function (Primary)</option>
+                    <option value="resend">Resend API (Official Resend SDK/REST)</option>
+                    <option value="brevo">Brevo / Sendinblue (Transactional REST)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    API Key (Optional for Custom Provider)
+                  </label>
+                  <input
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder="re_123... (Leave blank to use Netlify env vars)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Tip: You can set <code className="text-slate-600 font-bold">RESEND_API_KEY</code> in Netlify Environment Variables.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2 px-3 rounded-xl text-xs transition"
+                >
+                  Save Email Settings
+                </button>
+              </form>
+
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="font-bold text-slate-800 text-xs">Live Dispatch Verification Test</div>
+                <p className="text-[11px] text-slate-500">
+                  Send a live test verification email right now to your administrator address (<strong className="text-slate-700">divineinyang636@gmail.com</strong>):
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSendTestEmail}
+                  disabled={testEmailLoading}
+                  className="w-full bg-royal-600 hover:bg-royal-500 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {testEmailLoading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Send Live Test Email to Divine</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Dispatched Logs Table */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-card space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-navy-950">Real-Time OTP Dispatch Logs</h3>
+                    <p className="text-xs text-slate-500">All student verification codes dispatched from the portal.</p>
+                  </div>
+                  <span className="text-xs font-bold text-royal-700 bg-royal-50 border border-royal-200 px-2.5 py-1 rounded-xl">
+                    {emailLogs.length} Events Logged
+                  </span>
+                </div>
+
+                {emailLogs.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs">
+                    <Mail className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <p>No student OTP emails have been dispatched yet.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      When students register or reset passwords, their dispatch logs will appear here live.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3">Recipient Email</th>
+                          <th className="py-2.5 px-3">Event Type</th>
+                          <th className="py-2.5 px-3">Provider</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3 text-right">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {emailLogs.map((log) => (
+                          <tr key={log.id}>
+                            <td className="py-2.5 px-3 font-semibold text-slate-900">{log.to}</td>
+                            <td className="py-2.5 px-3">
+                              <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold">
+                                {log.type}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600 font-medium">{log.provider}</td>
+                            <td className="py-2.5 px-3">
+                              <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[10px]">
+                                <Check className="w-3 h-3" />
+                                {log.status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-400 font-mono text-[11px]">
+                              {new Date(log.timestamp).toLocaleTimeString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, PaymentStatus, UserRole } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { EmailService } from '../lib/emailService';
 
 export const ADMIN_EMAIL = 'divineinyang636@gmail.com';
 
@@ -16,9 +17,9 @@ interface AuthContextType {
   registeredUsers: UserProfile[];
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  sendRegistrationOtp: (email: string, fullName: string, matricNumber: string) => Promise<{ success: boolean; otp?: string; error?: string }>;
+  sendRegistrationOtp: (email: string, fullName: string, matricNumber: string) => Promise<{ success: boolean; error?: string }>;
   verifyRegistrationOtp: (email: string, otp: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  sendForgotPasswordOtp: (email: string) => Promise<{ success: boolean; otp?: string; error?: string }>;
+  sendForgotPasswordOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPasswordWithOtp: (email: string, otp: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   updateProfile: (updates: Partial<UserProfile>) => void;
 }
@@ -151,7 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     fullName: string,
     matricNumber: string
-  ): Promise<{ success: boolean; otp?: string; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
     
     // Check if matric or email already registered
@@ -162,8 +163,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'An account with this email or matric number already exists.' };
     }
 
-    // Generate random 6-digit OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate cryptographically secure random 6-digit OTP
+    const array = new Uint32Array(1);
+    window.crypto.getRandomValues(array);
+    const code = (100000 + (array[0] % 900000)).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
 
     setOtpStore((prev) => ({
@@ -174,6 +177,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         meta: { fullName, matricNumber }
       }
     }));
+
+    // Dispatch real email via serverless Netlify function / API
+    await EmailService.dispatchOtpEmail({
+      to: normalizedEmail,
+      fullName: fullName.trim(),
+      type: 'REGISTRATION_OTP',
+      code,
+    });
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -189,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    return { success: true, otp: code };
+    return { success: true };
   };
 
   const verifyRegistrationOtp = async (
@@ -240,7 +251,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
-  const sendForgotPasswordOtp = async (email: string): Promise<{ success: boolean; otp?: string; error?: string }> => {
+  const sendForgotPasswordOtp = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
     const userExists = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
 
@@ -248,7 +259,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'No account registered with this email.' };
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate cryptographically secure random 6-digit recovery OTP
+    const array = new Uint32Array(1);
+    window.crypto.getRandomValues(array);
+    const code = (100000 + (array[0] % 900000)).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000;
 
     setOtpStore((prev) => ({
@@ -256,7 +270,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ['reset_' + normalizedEmail]: { code, expiresAt }
     }));
 
-    return { success: true, otp: code };
+    // Dispatch real password recovery email
+    await EmailService.dispatchOtpEmail({
+      to: normalizedEmail,
+      fullName: userExists.fullName,
+      type: 'PASSWORD_RESET_OTP',
+      code,
+    });
+
+    return { success: true };
   };
 
   const resetPasswordWithOtp = async (

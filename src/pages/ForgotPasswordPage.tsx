@@ -12,7 +12,6 @@ export const ForgotPasswordPage: React.FC<Props> = ({ onBackToLogin }) => {
   const [step, setStep] = useState<'REQUEST_OTP' | 'VERIFY_AND_RESET'>('REQUEST_OTP');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -33,7 +32,6 @@ export const ForgotPasswordPage: React.FC<Props> = ({ onBackToLogin }) => {
     try {
       const res = await sendForgotPasswordOtp(email);
       if (res.success) {
-        setGeneratedOtp(res.otp || null);
         setStep('VERIFY_AND_RESET');
       } else {
         setError(res.error || 'Failed to send recovery OTP.');
@@ -153,18 +151,15 @@ export const ForgotPasswordPage: React.FC<Props> = ({ onBackToLogin }) => {
             </form>
           ) : (
             <form onSubmit={handleResetPassword} className="space-y-3.5">
-              {generatedOtp && (
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
-                  <span>Recovery OTP: <strong>{generatedOtp}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => setOtp(generatedOtp)}
-                    className="text-[10px] bg-white px-2 py-0.5 rounded border border-emerald-300 font-bold"
-                  >
-                    Auto-fill
-                  </button>
+              <div className="p-3 bg-royal-50 border border-royal-200 rounded-xl text-xs text-royal-950 flex items-start gap-2.5 mb-2">
+                <KeyRound className="w-4 h-4 text-royal-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-royal-950">Recovery Code Dispatched</div>
+                  <p className="text-slate-600 text-[11px] leading-relaxed mt-0.5">
+                    A 6-digit password recovery code was sent to <strong>{email}</strong>. Check your inbox and spam folder.
+                  </p>
                 </div>
-              )}
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">

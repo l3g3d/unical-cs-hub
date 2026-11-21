@@ -4,7 +4,7 @@ import { GraduationCap, Mail, User, Hash, Lock, ArrowRight, AlertCircle, Loader2
 
 interface Props {
   onLoginClick: () => void;
-  onOtpSent: (email: string, password: string, generatedOtp?: string) => void;
+  onOtpSent: (email: string, password: string) => void;
 }
 
 export const RegisterPage: React.FC<Props> = ({ onLoginClick, onOtpSent }) => {
@@ -43,7 +43,7 @@ export const RegisterPage: React.FC<Props> = ({ onLoginClick, onOtpSent }) => {
     try {
       const res = await sendRegistrationOtp(email, fullName, matricNumber);
       if (res.success) {
-        onOtpSent(email, password, res.otp);
+        onOtpSent(email, password);
       } else {
         setError(res.error || 'Failed to dispatch email verification OTP.');
       }

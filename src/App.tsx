@@ -37,7 +37,6 @@ const AppContent: React.FC = () => {
   // OTP flow state
   const [pendingEmail, setPendingEmail] = useState('');
   const [pendingPassword, setPendingPassword] = useState('');
-  const [pendingOtp, setPendingOtp] = useState<string | undefined>(undefined);
 
   // AI Assistant Modal State
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -67,10 +66,9 @@ const AppContent: React.FC = () => {
       return (
         <RegisterPage
           onLoginClick={() => setAuthView('login')}
-          onOtpSent={(email, password, otp) => {
+          onOtpSent={(email, password) => {
             setPendingEmail(email);
             setPendingPassword(password);
-            setPendingOtp(otp);
             setAuthView('verify_otp');
           }}
         />
@@ -82,7 +80,6 @@ const AppContent: React.FC = () => {
         <VerifyOtpPage
           email={pendingEmail}
           password={pendingPassword}
-          initialOtp={pendingOtp}
           onVerificationSuccess={() => {
             setAuthView('landing');
             setActiveTab('dashboard');
