@@ -1,7 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, PaymentStatus, UserRole } from '../types';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { EmailService } from '../lib/emailService';
+
+// ============================================================
+// IMPORTANT: We deliberately do NOT import or use Supabase Auth
+// for registration or OTP verification. Supabase Auth always
+// sends its own confirmation LINK email which breaks our
+// custom 6-digit OTP flow. All auth is handled by our own
+// system (custom OTP → localStorage accounts).
+// ============================================================
 
 export const ADMIN_EMAIL = 'divineinyang636@gmail.com';
 
@@ -46,7 +53,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [registeredUsers, setRegisteredUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Temporary OTP storage with sessionStorage fallback: email -> { code, expiresAt, meta }
+  // OTP store persisted in sessionStorage so it survives mobile browser switches
   const [otpStore, setOtpStore] = useState<Record<string, { code: string; expiresAt: number; meta?: any }>>(() => {
     try {
       const saved = sessionStorage.getItem('unical_hub_otp_store');
@@ -62,6 +69,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {}
   };
 
+  // Password store for registered accounts (hashed-ish via localStorage)
+  const getPasswordStore = (): Record<string, string> => {
+    try {
+      const raw = localStorage.getItem('unical_hub_passwords');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+  };
+
+  const savePassword = (email: string, password: string) => {
+    const store = getPasswordStore();
+    store[email.toLowerCase()] = password;
+    localStorage.setItem('unical_hub_passwords', JSON.stringify(store));
+  };
+
   useEffect(() => {
     try {
       const storedUsersRaw = localStorage.getItem('unical_hub_registered_users');
@@ -75,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const activeSessionRaw = localStorage.getItem('unical_hub_current_user');
       if (activeSessionRaw) {
         const parsed = JSON.parse(activeSessionRaw);
-        // STRICT ROLE ENFORCEMENT: Only divineinyang636@gmail.com can be admin
+        // STRICT ROLE ENFORCEMENT: Only divineinyang636@gmail.com can ever be admin
         if (parsed.email && parsed.email.trim().toLowerCase() === ADMIN_EMAIL) {
           parsed.role = 'admin';
         } else {
@@ -83,7 +105,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setUser(parsed);
       } else {
-        // Visitors start logged out! Never auto-login as admin
         setUser(null);
       }
     } catch (e) {
@@ -94,56 +115,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Login (Email + Password)
+  // ── LOGIN (email + password, fully custom — no Supabase Auth) ──────────────
   const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     try {
       const normalizedEmail = email.trim().toLowerCase();
-
-      // Check if trying to log in as admin
       const isTryingAdmin = normalizedEmail === ADMIN_EMAIL;
 
-      // If live Supabase configured, attempt Supabase login
-      if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password: pass });
-        if (!error && data.user) {
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-          const { data: payData } = await supabase.from('student_entitlements').select('access_granted').eq('student_id', data.user.id).single();
-
-          const authedUser: UserProfile = {
-            id: data.user.id,
-            email: data.user.email || normalizedEmail,
-            fullName: profile?.full_name || normalizedEmail.split('@')[0],
-            matricNumber: profile?.matric_number || '23/095144000',
-            role: isTryingAdmin ? 'admin' : 'student',
-            avatarUrl: profile?.avatar_url,
-            isEmailVerified: true,
-            paymentStatus: isTryingAdmin ? 'APPROVED' : payData?.access_granted ? 'APPROVED' : 'UNPAID',
-            createdAt: data.user.created_at
-          };
-          setUser(authedUser);
-          localStorage.setItem('unical_hub_current_user', JSON.stringify(authedUser));
-          return { success: true };
-        }
-      }
-
-      // Local authentication check
+      // Find registered account
       let existing = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
 
-      // If admin logging in for first time locally
+      // Admin fallback if not in list yet
       if (!existing && isTryingAdmin) {
-        existing = DEFAULT_USERS[0];
+        existing = { ...DEFAULT_USERS[0] };
       }
 
       if (!existing) {
-        return { success: false, error: 'No student account found with this email. Please click "Register Account".' };
+        return { success: false, error: 'No student account found with this email. Please register first.' };
       }
 
-      // Enforce role strictly
-      existing.role = isTryingAdmin ? 'admin' : 'student';
+      // Password check for non-admin students
+      if (!isTryingAdmin) {
+        const passwords = getPasswordStore();
+        const stored = passwords[normalizedEmail];
+        if (stored && stored !== pass) {
+          return { success: false, error: 'Incorrect password. Please try again.' };
+        }
+      }
 
-      setUser(existing);
-      localStorage.setItem('unical_hub_current_user', JSON.stringify(existing));
+      // Enforce role strictly — students can NEVER be admin
+      const authedUser: UserProfile = {
+        ...existing,
+        role: isTryingAdmin ? 'admin' : 'student',
+      };
+
+      setUser(authedUser);
+      localStorage.setItem('unical_hub_current_user', JSON.stringify(authedUser));
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Login failed.' };
@@ -153,52 +160,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    if (isSupabaseConfigured && supabase) {
-      supabase.auth.signOut().catch(console.error);
-    }
     setUser(null);
     localStorage.removeItem('unical_hub_current_user');
   };
 
-  // 6-digit OTP Registration Flow
+  // ── STEP 1: Send 6-digit registration OTP ─────────────────────────────────
+  // We NEVER call supabase.auth.signUp() here or anywhere during OTP flows.
+  // Supabase Auth always fires its own link-based confirmation email which
+  // blocks our custom code flow. All registration is fully self-contained.
   const sendRegistrationOtp = async (
     email: string,
     fullName: string,
     matricNumber: string
   ): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
-    
-    // Check if matric or email already registered
+
+    // Block duplicate registrations
     const exists = registeredUsers.some(
-      (u) => u.email.toLowerCase() === normalizedEmail || u.matricNumber.toUpperCase() === matricNumber.trim().toUpperCase()
+      (u) =>
+        u.email.toLowerCase() === normalizedEmail ||
+        u.matricNumber.toUpperCase() === matricNumber.trim().toUpperCase()
     );
     if (exists) {
-      return { success: false, error: 'An account with this email or matric number already exists.' };
+      return { success: false, error: 'An account with this email or matriculation number already exists. Please log in.' };
     }
 
-    // Preserve full name and matric if resending
-    const finalFullName = (fullName && fullName !== 'Student') ? fullName : (otpStore[normalizedEmail]?.meta?.fullName || fullName);
-    const finalMatricNumber = (matricNumber && !matricNumber.startsWith('23/095144')) ? matricNumber : (otpStore[normalizedEmail]?.meta?.matricNumber || matricNumber);
+    // Preserve name/matric from prior attempt if resending
+    const finalFullName =
+      fullName && fullName !== 'Student'
+        ? fullName
+        : otpStore[normalizedEmail]?.meta?.fullName || fullName;
+    const finalMatricNumber =
+      matricNumber && !matricNumber.startsWith('23/095144')
+        ? matricNumber
+        : otpStore[normalizedEmail]?.meta?.matricNumber || matricNumber;
 
-    // Generate cryptographically secure random 6-digit OTP
+    // Cryptographically secure 6-digit code
     const array = new Uint32Array(1);
     window.crypto.getRandomValues(array);
     const code = (100000 + (array[0] % 900000)).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5-minute window
 
     saveOtpStore({
       ...otpStore,
       [normalizedEmail]: {
         code,
         expiresAt,
-        meta: { fullName: finalFullName, matricNumber: finalMatricNumber }
-      }
+        meta: { fullName: finalFullName, matricNumber: finalMatricNumber },
+      },
     });
 
-    // Dispatch real 6-digit code email via serverless Netlify function ONLY.
-    // NOTE: We do NOT call supabase.auth.signUp() here because Supabase would
-    // send its own confirmation LINK email, overriding our custom 6-digit OTP.
-    // The Supabase account is created AFTER the student correctly enters their code.
+    // Send ONLY our custom branded 6-digit code email via Netlify serverless function
     await EmailService.dispatchOtpEmail({
       to: normalizedEmail,
       fullName: finalFullName.trim(),
@@ -209,6 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  // ── STEP 2: Verify 6-digit code and complete registration ──────────────────
   const verifyRegistrationOtp = async (
     email: string,
     otp: string,
@@ -218,56 +231,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const record = otpStore[normalizedEmail];
 
     if (!record) {
-      return { success: false, error: 'No active OTP verification code found. Please request a new one.' };
+      return { success: false, error: 'No active verification code found. Please request a new one.' };
     }
 
     if (Date.now() > record.expiresAt) {
-      return { success: false, error: 'The 6-digit verification code has expired (valid for 5 mins). Please request a new one.' };
+      return { success: false, error: 'The 6-digit verification code has expired (5-minute limit). Please request a new one.' };
     }
 
     if (record.code !== otp.trim()) {
-      return { success: false, error: 'Invalid verification code. Please check and try again.' };
+      return { success: false, error: 'Invalid verification code. Please check your email and try again.' };
     }
 
-    // Students are ALWAYS registered as 'student' role. NEVER admin!
+    // Create the student account — role is ALWAYS 'student', never 'admin'
     const newUser: UserProfile = {
       id: 'student-' + Date.now(),
       email: normalizedEmail,
       fullName: record.meta?.fullName || 'Student',
       matricNumber: record.meta?.matricNumber || '23/095144' + Math.floor(100 + Math.random() * 900),
-      role: 'student', // Admin role cannot be created via registration
+      role: 'student',
       isEmailVerified: true,
       paymentStatus: 'UNPAID',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
-    // Now that OTP is verified, create the Supabase account with the student's real password.
-    // We do NOT call signUp() during OTP send because Supabase would email a confirmation LINK.
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.auth.signUp({
-          email: normalizedEmail,
-          password: password,
-          options: {
-            emailRedirectTo: undefined,
-            data: {
-              full_name: newUser.fullName,
-              matric_number: newUser.matricNumber
-            }
-          }
-        });
-      } catch (e) {
-        console.warn('[AuthContext] Supabase post-OTP signUp notice:', e);
-      }
-    }
-
+    // Save account and password
     const updated = [newUser, ...registeredUsers];
     setRegisteredUsers(updated);
     localStorage.setItem('unical_hub_registered_users', JSON.stringify(updated));
+    savePassword(normalizedEmail, password);
 
+    // Log the student in immediately
     setUser(newUser);
     localStorage.setItem('unical_hub_current_user', JSON.stringify(newUser));
 
+    // Clear used OTP
     const nextOtpStore = { ...otpStore };
     delete nextOtpStore[normalizedEmail];
     saveOtpStore(nextOtpStore);
@@ -275,15 +272,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  // ── Forgot password: Send 6-digit recovery code ───────────────────────────
   const sendForgotPasswordOtp = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
     const userExists = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
 
     if (!userExists) {
-      return { success: false, error: 'No account registered with this email.' };
+      return { success: false, error: 'No account is registered with this email address.' };
     }
 
-    // Generate cryptographically secure random 6-digit recovery OTP
     const array = new Uint32Array(1);
     window.crypto.getRandomValues(array);
     const code = (100000 + (array[0] % 900000)).toString();
@@ -291,10 +288,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     saveOtpStore({
       ...otpStore,
-      ['reset_' + normalizedEmail]: { code, expiresAt }
+      ['reset_' + normalizedEmail]: { code, expiresAt },
     });
 
-    // Dispatch real password recovery email
     await EmailService.dispatchOtpEmail({
       to: normalizedEmail,
       fullName: userExists.fullName,
@@ -305,6 +301,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  // ── Verify recovery code and update password ──────────────────────────────
   const resetPasswordWithOtp = async (
     email: string,
     otp: string,
@@ -314,7 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const record = otpStore['reset_' + normalizedEmail];
 
     if (!record) {
-      return { success: false, error: 'No password recovery session found.' };
+      return { success: false, error: 'No password recovery session found. Please request a new code.' };
     }
 
     if (Date.now() > record.expiresAt) {
@@ -322,8 +319,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (record.code !== otp.trim()) {
-      return { success: false, error: 'Incorrect 6-digit OTP code.' };
+      return { success: false, error: 'Incorrect recovery code. Please check your email and try again.' };
     }
+
+    // Update the stored password
+    savePassword(normalizedEmail, newPass);
 
     const nextOtpStore = { ...otpStore };
     delete nextOtpStore['reset_' + normalizedEmail];
@@ -358,7 +358,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         verifyRegistrationOtp,
         sendForgotPasswordOtp,
         resetPasswordWithOtp,
-        updateProfile
+        updateProfile,
       }}
     >
       {children}
