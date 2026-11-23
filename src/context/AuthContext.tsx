@@ -195,27 +195,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Dispatch real email via serverless Netlify function / API
+    // Dispatch real 6-digit code email via serverless Netlify function ONLY.
+    // NOTE: We do NOT call supabase.auth.signUp() here because Supabase would
+    // send its own confirmation LINK email, overriding our custom 6-digit OTP.
+    // The Supabase account is created AFTER the student correctly enters their code.
     await EmailService.dispatchOtpEmail({
       to: normalizedEmail,
       fullName: finalFullName.trim(),
       type: 'REGISTRATION_OTP',
       code,
     });
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.auth.signUp({
-          email: normalizedEmail,
-          password: 'TemporarySecretPassword123!',
-          options: {
-            data: { full_name: fullName, matric_number: matricNumber }
-          }
-        });
-      } catch (e) {
-        console.warn('Supabase signUp OTP notice:', e);
-      }
-    }
 
     return { success: true };
   };
@@ -251,6 +240,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       paymentStatus: 'UNPAID',
       createdAt: new Date().toISOString()
     };
+
+    // Now that OTP is verified, create the Supabase account with the student's real password.
+    // We do NOT call signUp() during OTP send because Supabase would email a confirmation LINK.
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signUp({
+          email: normalizedEmail,
+          password: password,
+          options: {
+            emailRedirectTo: undefined,
+            data: {
+              full_name: newUser.fullName,
+              matric_number: newUser.matricNumber
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('[AuthContext] Supabase post-OTP signUp notice:', e);
+      }
+    }
 
     const updated = [newUser, ...registeredUsers];
     setRegisteredUsers(updated);
