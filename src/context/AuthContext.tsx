@@ -24,10 +24,11 @@ interface AuthContextType {
   registeredUsers: UserProfile[];
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  sendRegistrationOtp: (email: string, fullName: string, matricNumber: string) => Promise<{ success: boolean; error?: string }>;
+  sendRegistrationOtp: (email: string, fullName: string, matricNumber: string) => Promise<{ success: boolean; delivered?: boolean; error?: string }>;
   verifyRegistrationOtp: (email: string, otp: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  sendForgotPasswordOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
+  sendForgotPasswordOtp: (email: string) => Promise<{ success: boolean; delivered?: boolean; error?: string }>;
   resetPasswordWithOtp: (email: string, otp: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
+  getOtpInfo: (email: string) => { code?: string; expiresAt?: number; delivered?: boolean } | null;
   updateProfile: (updates: Partial<UserProfile>) => void;
 }
 
@@ -54,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   // OTP store persisted in sessionStorage so it survives mobile browser switches
-  const [otpStore, setOtpStore] = useState<Record<string, { code: string; expiresAt: number; meta?: any }>>(() => {
+  const [otpStore, setOtpStore] = useState<Record<string, { code: string; expiresAt: number; delivered?: boolean; meta?: any }>>(() => {
     try {
       const saved = sessionStorage.getItem('unical_hub_otp_store');
       if (saved) return JSON.parse(saved);
@@ -62,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {};
   });
 
-  const saveOtpStore = (newStore: Record<string, { code: string; expiresAt: number; meta?: any }>) => {
+  const saveOtpStore = (newStore: Record<string, { code: string; expiresAt: number; delivered?: boolean; meta?: any }>) => {
     setOtpStore(newStore);
     try {
       sessionStorage.setItem('unical_hub_otp_store', JSON.stringify(newStore));
@@ -172,7 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     fullName: string,
     matricNumber: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; delivered?: boolean; error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
 
     // Block duplicate registrations
@@ -201,24 +202,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const code = (100000 + (array[0] % 900000)).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5-minute window
 
-    saveOtpStore({
-      ...otpStore,
-      [normalizedEmail]: {
-        code,
-        expiresAt,
-        meta: { fullName: finalFullName, matricNumber: finalMatricNumber },
-      },
-    });
-
-    // Send ONLY our custom branded 6-digit code email via Netlify serverless function
-    await EmailService.dispatchOtpEmail({
+    // Dispatch real email via serverless Netlify function
+    const dispatchResult = await EmailService.dispatchOtpEmail({
       to: normalizedEmail,
       fullName: finalFullName.trim(),
       type: 'REGISTRATION_OTP',
       code,
     });
 
-    return { success: true };
+    saveOtpStore({
+      ...otpStore,
+      [normalizedEmail]: {
+        code,
+        expiresAt,
+        delivered: dispatchResult.delivered,
+        meta: { fullName: finalFullName, matricNumber: finalMatricNumber },
+      },
+    });
+
+    return { success: true, delivered: dispatchResult.delivered };
   };
 
   // ── STEP 2: Verify 6-digit code and complete registration ──────────────────
@@ -273,7 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // ── Forgot password: Send 6-digit recovery code ───────────────────────────
-  const sendForgotPasswordOtp = async (email: string): Promise<{ success: boolean; error?: string }> => {
+  const sendForgotPasswordOtp = async (email: string): Promise<{ success: boolean; delivered?: boolean; error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
     const userExists = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
 
@@ -286,19 +288,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const code = (100000 + (array[0] % 900000)).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000;
 
-    saveOtpStore({
-      ...otpStore,
-      ['reset_' + normalizedEmail]: { code, expiresAt },
-    });
-
-    await EmailService.dispatchOtpEmail({
+    const dispatchResult = await EmailService.dispatchOtpEmail({
       to: normalizedEmail,
       fullName: userExists.fullName,
       type: 'PASSWORD_RESET_OTP',
       code,
     });
 
-    return { success: true };
+    saveOtpStore({
+      ...otpStore,
+      ['reset_' + normalizedEmail]: {
+        code,
+        expiresAt,
+        delivered: dispatchResult.delivered,
+      },
+    });
+
+    return { success: true, delivered: dispatchResult.delivered };
+  };
+
+  // Helper to read OTP status for verification screens
+  const getOtpInfo = (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    return otpStore[normalizedEmail] || otpStore['reset_' + normalizedEmail] || null;
   };
 
   // ── Verify recovery code and update password ──────────────────────────────
@@ -358,6 +370,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         verifyRegistrationOtp,
         sendForgotPasswordOtp,
         resetPasswordWithOtp,
+        getOtpInfo,
         updateProfile,
       }}
     >

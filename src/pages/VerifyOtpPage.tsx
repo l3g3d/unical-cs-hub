@@ -15,7 +15,10 @@ export const VerifyOtpPage: React.FC<Props> = ({
   onVerificationSuccess,
   onBack,
 }) => {
-  const { verifyRegistrationOtp, sendRegistrationOtp } = useAuth();
+  const { verifyRegistrationOtp, sendRegistrationOtp, getOtpInfo } = useAuth();
+  const otpInfo = getOtpInfo(email);
+  const isDelivered = otpInfo?.delivered === true;
+  const pendingCode = otpInfo?.code;
 
   const [otp, setOtp] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -121,16 +124,36 @@ export const VerifyOtpPage: React.FC<Props> = ({
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 sm:px-10 shadow-card rounded-2xl border border-slate-200">
-          {/* Real Email Dispatched Status Badge */}
-          <div className="mb-5 p-3.5 rounded-xl bg-royal-50/80 border border-royal-200/80 text-xs text-royal-950 flex items-start gap-3">
-            <MailCheck className="w-5 h-5 text-royal-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <div className="font-bold text-royal-950 mb-0.5">Verification Code Dispatched</div>
+          {/* Email Dispatched Status Badge */}
+          {isDelivered ? (
+            <div className="mb-5 p-3.5 rounded-xl bg-royal-50/80 border border-royal-200/80 text-xs text-royal-950 flex items-start gap-3">
+              <MailCheck className="w-5 h-5 text-royal-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold text-royal-950 mb-0.5">Verification Code Dispatched</div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  A 6-digit one-time verification code has been dispatched to <strong>{email}</strong>. Please check your inbox (and your Spam or Junk folder).
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-amber-900">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>Instant Student Verification Notice</span>
+              </div>
               <p className="text-slate-600 leading-relaxed text-[11px]">
-                A 6-digit one-time verification code has been dispatched to <strong>{email}</strong>. Please check your inbox (and your Spam or Junk folder).
+                Server email dispatch is awaiting live SMTP activation. If this email has not dropped in your inbox, use your one-time verification code below:
+              </p>
+              {pendingCode && (
+                <div className="bg-white border-2 border-dashed border-amber-300 py-2 px-4 rounded-xl text-center font-mono font-black text-xl tracking-widest text-royal-700 w-fit mx-auto shadow-xs">
+                  {pendingCode}
+                </div>
+              )}
+              <p className="text-[10px] text-slate-500 text-center">
+                Enter this 6-digit code below to activate your student account immediately.
               </p>
             </div>
-          </div>
+          )}
 
           {error && (
             <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center gap-2">
@@ -199,6 +222,17 @@ export const VerifyOtpPage: React.FC<Props> = ({
                   : 'Resend 6-Digit Code'}
               </span>
             </button>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+            <a
+              href={`https://wa.me/2348139651907?text=${encodeURIComponent(`Hello Divine, I am registering on UNICAL CS HUB (${email}). Please assist me with my verification code.`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 hover:text-emerald-700 font-semibold transition"
+            >
+              <span>💬 Didn't receive code? Message Course Rep on WhatsApp</span>
+            </a>
           </div>
         </div>
       </div>

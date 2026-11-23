@@ -1119,6 +1119,48 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                 </p>
               </div>
 
+              {/* Quick Setup Guide to make emails drop immediately */}
+              <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs space-y-2 text-amber-950">
+                <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                  <KeyRound className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <span>How to make OTP emails drop into inboxes:</span>
+                </div>
+                <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-amber-900 leading-relaxed">
+                  <li>
+                    Generate a Google App Password for <strong>divineinyang636@gmail.com</strong> at{' '}
+                    <a
+                      href="https://myaccount.google.com/apppasswords"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-royal-600 underline font-semibold"
+                    >
+                      Google App Passwords ↗
+                    </a>
+                  </li>
+                  <li>
+                    Open your Netlify site configuration at{' '}
+                    <a
+                      href="https://app.netlify.com/sites/unicalcshub/configuration/env"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-royal-600 underline font-semibold"
+                    >
+                      Netlify Environment Variables ↗
+                    </a>
+                  </li>
+                  <li>
+                    Add these two variables:
+                    <div className="font-mono text-[10px] bg-white p-2 rounded-lg border border-amber-200 mt-1 space-y-0.5 text-slate-800">
+                      <div><strong>SMTP_USER</strong> = divineinyang636@gmail.com</div>
+                      <div><strong>SMTP_PASS</strong> = (your 16-letter App Password)</div>
+                    </div>
+                  </li>
+                </ol>
+                <p className="text-[10px] text-slate-500 italic">
+                  💡 Alternatively, add <strong>BREVO_API_KEY</strong> from Brevo.com (300 free emails/day).
+                </p>
+              </div>
+
               <form onSubmit={handleSaveEmailConfig} className="space-y-3 text-xs">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Email Delivery Provider</label>

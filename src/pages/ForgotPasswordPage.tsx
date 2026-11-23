@@ -7,13 +7,17 @@ interface Props {
 }
 
 export const ForgotPasswordPage: React.FC<Props> = ({ onBackToLogin }) => {
-  const { sendForgotPasswordOtp, resetPasswordWithOtp } = useAuth();
+  const { sendForgotPasswordOtp, resetPasswordWithOtp, getOtpInfo } = useAuth();
 
   const [step, setStep] = useState<'REQUEST_OTP' | 'VERIFY_AND_RESET'>('REQUEST_OTP');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  const otpInfo = getOtpInfo(email);
+  const isDelivered = otpInfo?.delivered === true;
+  const pendingCode = otpInfo?.code;
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -151,15 +155,32 @@ export const ForgotPasswordPage: React.FC<Props> = ({ onBackToLogin }) => {
             </form>
           ) : (
             <form onSubmit={handleResetPassword} className="space-y-3.5">
-              <div className="p-3 bg-royal-50 border border-royal-200 rounded-xl text-xs text-royal-950 flex items-start gap-2.5 mb-2">
-                <KeyRound className="w-4 h-4 text-royal-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="font-bold text-royal-950">Recovery Code Dispatched</div>
-                  <p className="text-slate-600 text-[11px] leading-relaxed mt-0.5">
-                    A 6-digit password recovery code was sent to <strong>{email}</strong>. Check your inbox and spam folder.
-                  </p>
+              {isDelivered ? (
+                <div className="p-3 bg-royal-50 border border-royal-200 rounded-xl text-xs text-royal-950 flex items-start gap-2.5 mb-2">
+                  <KeyRound className="w-4 h-4 text-royal-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-royal-950">Recovery Code Dispatched</div>
+                    <p className="text-slate-600 text-[11px] leading-relaxed mt-0.5">
+                      A 6-digit password recovery code was sent to <strong>{email}</strong>. Check your inbox and spam folder.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 space-y-2 mb-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-900">
+                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <span>Instant Password Recovery Code</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
+                    If the recovery email has not dropped in your inbox, use your one-time code below:
+                  </p>
+                  {pendingCode && (
+                    <div className="bg-white border-2 border-dashed border-amber-300 py-1.5 px-3 rounded-xl text-center font-mono font-black text-lg tracking-widest text-royal-700 w-fit mx-auto shadow-xs">
+                      {pendingCode}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
