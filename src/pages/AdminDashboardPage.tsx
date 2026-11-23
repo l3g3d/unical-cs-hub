@@ -1119,45 +1119,47 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                 </p>
               </div>
 
-              {/* Quick Setup Guide to make emails drop immediately */}
-              <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs space-y-2 text-amber-950">
-                <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                  <KeyRound className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                  <span>How to make OTP emails drop into inboxes:</span>
+              {/* Quick Setup Guide to make emails drop immediately with Brevo */}
+              <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl text-xs space-y-2 text-blue-950">
+                <div className="font-bold flex items-center gap-1.5 text-blue-950">
+                  <Mail className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                  <span>Activate Brevo for Instant OTP Delivery (300 free emails/day):</span>
                 </div>
-                <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-amber-900 leading-relaxed">
+                <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-blue-900 leading-relaxed">
                   <li>
-                    Generate a Google App Password for <strong>divineinyang636@gmail.com</strong> at{' '}
+                    Open your Brevo API keys page:{' '}
                     <a
-                      href="https://myaccount.google.com/apppasswords"
+                      href="https://app.brevo.com/settings/keys/api"
                       target="_blank"
                       rel="noreferrer"
-                      className="text-royal-600 underline font-semibold"
+                      className="text-royal-600 underline font-bold"
                     >
-                      Google App Passwords ↗
+                      app.brevo.com/settings/keys/api ↗
                     </a>
                   </li>
                   <li>
-                    Open your Netlify site configuration at{' '}
+                    Click <strong>Generate a new API key</strong>, name it <strong>UNICAL CS HUB</strong>, and copy the key (starts with <code className="bg-white px-1 py-0.5 rounded border border-blue-200 font-mono text-[10px]">xkeysib-...</code>).
+                  </li>
+                  <li>
+                    Open your Netlify site settings:{' '}
                     <a
                       href="https://app.netlify.com/sites/unicalcshub/configuration/env"
                       target="_blank"
                       rel="noreferrer"
-                      className="text-royal-600 underline font-semibold"
+                      className="text-royal-600 underline font-bold"
                     >
                       Netlify Environment Variables ↗
                     </a>
                   </li>
                   <li>
-                    Add these two variables:
-                    <div className="font-mono text-[10px] bg-white p-2 rounded-lg border border-amber-200 mt-1 space-y-0.5 text-slate-800">
-                      <div><strong>SMTP_USER</strong> = divineinyang636@gmail.com</div>
-                      <div><strong>SMTP_PASS</strong> = (your 16-letter App Password)</div>
+                    Click <strong>Add a variable</strong> and enter:
+                    <div className="font-mono text-[10px] bg-white p-2 rounded-lg border border-blue-200 mt-1 text-slate-900">
+                      <strong>BREVO_API_KEY</strong> = xkeysib-...
                     </div>
                   </li>
                 </ol>
-                <p className="text-[10px] text-slate-500 italic">
-                  💡 Alternatively, add <strong>BREVO_API_KEY</strong> from Brevo.com (300 free emails/day).
+                <p className="text-[10px] text-slate-600 italic">
+                  💡 You can also paste your Brevo key in the form below and click "Save Email Settings".
                 </p>
               </div>
 

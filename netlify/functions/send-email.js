@@ -398,9 +398,10 @@ export const handler = async (event, context) => {
 
     const plainText = `UNICAL CS HUB\nDepartment of Computer Science - University of Calabar\n\nHello ${fullName || 'Student'},\n\nYour 6-digit code is: ${code}\nThis code is valid for 5 minutes.\n\nNever share this code with anyone.\n\n— Divine Christopher Inyang (Course Representative)`;
 
-    // Check for Available Providers
-    const resendKey = clientApiKey || process.env.RESEND_API_KEY;
-    const brevoKey = process.env.BREVO_API_KEY;
+    // Check for Available Providers (supports Brevo, Gmail SMTP, and Resend)
+    const isBrevo = (clientApiKey && clientApiKey.startsWith('xkeysib-')) || clientProvider === 'brevo';
+    const brevoKey = process.env.BREVO_API_KEY || (isBrevo ? clientApiKey : null);
+    const resendKey = (!isBrevo ? clientApiKey : null) || process.env.RESEND_API_KEY;
     const smtpPass = clientSmtpPass || process.env.SMTP_PASS;
     const smtpUser = process.env.SMTP_USER || 'divineinyang636@gmail.com';
     const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
@@ -408,8 +409,19 @@ export const handler = async (event, context) => {
     let deliveryResult = null;
     let usedProvider = 'serverless-dispatcher';
 
-    // 1. Try Direct SMTP (Gmail) if password provided
-    if (smtpPass) {
+    // 1. Try Brevo REST API (Primary transactional relay - 300 free emails/day to any recipient)
+    if (brevoKey) {
+      try {
+        const sender = process.env.EMAIL_FROM || 'divineinyang636@gmail.com';
+        deliveryResult = await sendWithBrevo(brevoKey, sender, to, subject, html, plainText);
+        usedProvider = 'brevo';
+      } catch (brevoErr) {
+        console.warn('[EmailFunction] Brevo error:', brevoErr.message);
+      }
+    }
+
+    // 2. Try Direct SMTP (Gmail port 465)
+    if (!deliveryResult && smtpPass) {
       try {
         deliveryResult = await sendWithSmtp({
           host: smtpHost,
@@ -427,7 +439,7 @@ export const handler = async (event, context) => {
       }
     }
 
-    // 2. Try Resend
+    // 3. Try Resend
     if (!deliveryResult && resendKey) {
       try {
         const fromEmail = process.env.EMAIL_FROM || 'UNICAL CS HUB <onboarding@resend.dev>';
@@ -435,16 +447,6 @@ export const handler = async (event, context) => {
         usedProvider = 'resend';
       } catch (resendErr) {
         console.warn('[EmailFunction] Resend error:', resendErr.message);
-      }
-    }
-
-    // 3. Try Brevo
-    if (!deliveryResult && brevoKey) {
-      try {
-        deliveryResult = await sendWithBrevo(brevoKey, process.env.EMAIL_FROM, to, subject, html, plainText);
-        usedProvider = 'brevo';
-      } catch (brevoErr) {
-        console.warn('[EmailFunction] Brevo error:', brevoErr.message);
       }
     }
 
