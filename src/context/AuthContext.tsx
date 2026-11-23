@@ -46,8 +46,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [registeredUsers, setRegisteredUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Temporary in-memory OTP storage: email -> { code, expiresAt, meta }
-  const [otpStore, setOtpStore] = useState<Record<string, { code: string; expiresAt: number; meta?: any }>>({});
+  // Temporary OTP storage with sessionStorage fallback: email -> { code, expiresAt, meta }
+  const [otpStore, setOtpStore] = useState<Record<string, { code: string; expiresAt: number; meta?: any }>>(() => {
+    try {
+      const saved = sessionStorage.getItem('unical_hub_otp_store');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
+  const saveOtpStore = (newStore: Record<string, { code: string; expiresAt: number; meta?: any }>) => {
+    setOtpStore(newStore);
+    try {
+      sessionStorage.setItem('unical_hub_otp_store', JSON.stringify(newStore));
+    } catch {}
+  };
 
   useEffect(() => {
     try {
@@ -163,25 +176,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'An account with this email or matric number already exists.' };
     }
 
+    // Preserve full name and matric if resending
+    const finalFullName = (fullName && fullName !== 'Student') ? fullName : (otpStore[normalizedEmail]?.meta?.fullName || fullName);
+    const finalMatricNumber = (matricNumber && !matricNumber.startsWith('23/095144')) ? matricNumber : (otpStore[normalizedEmail]?.meta?.matricNumber || matricNumber);
+
     // Generate cryptographically secure random 6-digit OTP
     const array = new Uint32Array(1);
     window.crypto.getRandomValues(array);
     const code = (100000 + (array[0] % 900000)).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
 
-    setOtpStore((prev) => ({
-      ...prev,
+    saveOtpStore({
+      ...otpStore,
       [normalizedEmail]: {
         code,
         expiresAt,
-        meta: { fullName, matricNumber }
+        meta: { fullName: finalFullName, matricNumber: finalMatricNumber }
       }
-    }));
+    });
 
     // Dispatch real email via serverless Netlify function / API
     await EmailService.dispatchOtpEmail({
       to: normalizedEmail,
-      fullName: fullName.trim(),
+      fullName: finalFullName.trim(),
       type: 'REGISTRATION_OTP',
       code,
     });
@@ -242,11 +259,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(newUser);
     localStorage.setItem('unical_hub_current_user', JSON.stringify(newUser));
 
-    setOtpStore((prev) => {
-      const next = { ...prev };
-      delete next[normalizedEmail];
-      return next;
-    });
+    const nextOtpStore = { ...otpStore };
+    delete nextOtpStore[normalizedEmail];
+    saveOtpStore(nextOtpStore);
 
     return { success: true };
   };
@@ -265,10 +280,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const code = (100000 + (array[0] % 900000)).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000;
 
-    setOtpStore((prev) => ({
-      ...prev,
+    saveOtpStore({
+      ...otpStore,
       ['reset_' + normalizedEmail]: { code, expiresAt }
-    }));
+    });
 
     // Dispatch real password recovery email
     await EmailService.dispatchOtpEmail({
@@ -301,11 +316,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Incorrect 6-digit OTP code.' };
     }
 
-    setOtpStore((prev) => {
-      const next = { ...prev };
-      delete next['reset_' + normalizedEmail];
-      return next;
-    });
+    const nextOtpStore = { ...otpStore };
+    delete nextOtpStore['reset_' + normalizedEmail];
+    saveOtpStore(nextOtpStore);
 
     return { success: true };
   };

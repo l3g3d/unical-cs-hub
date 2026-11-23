@@ -31,12 +31,59 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedCourseParam, setSelectedCourseParam] = useState<string | undefined>(undefined);
 
-  // Unauthenticated flow view
-  const [authView, setAuthView] = useState<'landing' | 'login' | 'register' | 'verify_otp' | 'forgot_password'>('landing');
+  // Unauthenticated flow view with sessionStorage persistence
+  const [authView, setAuthView] = useState<'landing' | 'login' | 'register' | 'verify_otp' | 'forgot_password'>(() => {
+    try {
+      const saved = sessionStorage.getItem('unical_hub_auth_view');
+      if (saved && ['landing', 'login', 'register', 'verify_otp', 'forgot_password'].includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'landing';
+  });
 
-  // OTP flow state
-  const [pendingEmail, setPendingEmail] = useState('');
-  const [pendingPassword, setPendingPassword] = useState('');
+  // OTP flow state with sessionStorage persistence
+  const [pendingEmail, setPendingEmail] = useState(() => {
+    try {
+      return sessionStorage.getItem('unical_hub_pending_email') || '';
+    } catch {}
+    return '';
+  });
+
+  const [pendingPassword, setPendingPassword] = useState(() => {
+    try {
+      return sessionStorage.getItem('unical_hub_pending_password') || '';
+    } catch {}
+    return '';
+  });
+
+  const updateAuthView = (view: 'landing' | 'login' | 'register' | 'verify_otp' | 'forgot_password') => {
+    setAuthView(view);
+    try {
+      sessionStorage.setItem('unical_hub_auth_view', view);
+    } catch {}
+  };
+
+  const handleOtpSent = (email: string, pass: string) => {
+    setPendingEmail(email);
+    setPendingPassword(pass);
+    try {
+      sessionStorage.setItem('unical_hub_pending_email', email);
+      sessionStorage.setItem('unical_hub_pending_password', pass);
+      sessionStorage.setItem('unical_hub_auth_view', 'verify_otp');
+    } catch {}
+    setAuthView('verify_otp');
+  };
+
+  const clearPendingAuth = () => {
+    setPendingEmail('');
+    setPendingPassword('');
+    try {
+      sessionStorage.removeItem('unical_hub_pending_email');
+      sessionStorage.removeItem('unical_hub_pending_password');
+      sessionStorage.removeItem('unical_hub_auth_view');
+    } catch {}
+  };
 
   // AI Assistant Modal State
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -55,9 +102,12 @@ const AppContent: React.FC = () => {
     if (authView === 'login') {
       return (
         <LoginPage
-          onRegisterClick={() => setAuthView('register')}
-          onForgotPasswordClick={() => setAuthView('forgot_password')}
-          onLoginSuccess={() => setActiveTab('dashboard')}
+          onRegisterClick={() => updateAuthView('register')}
+          onForgotPasswordClick={() => updateAuthView('forgot_password')}
+          onLoginSuccess={() => {
+            clearPendingAuth();
+            setActiveTab('dashboard');
+          }}
         />
       );
     }
@@ -65,12 +115,8 @@ const AppContent: React.FC = () => {
     if (authView === 'register') {
       return (
         <RegisterPage
-          onLoginClick={() => setAuthView('login')}
-          onOtpSent={(email, password) => {
-            setPendingEmail(email);
-            setPendingPassword(password);
-            setAuthView('verify_otp');
-          }}
+          onLoginClick={() => updateAuthView('login')}
+          onOtpSent={handleOtpSent}
         />
       );
     }
@@ -81,10 +127,11 @@ const AppContent: React.FC = () => {
           email={pendingEmail}
           password={pendingPassword}
           onVerificationSuccess={() => {
-            setAuthView('landing');
+            clearPendingAuth();
+            updateAuthView('landing');
             setActiveTab('dashboard');
           }}
-          onBack={() => setAuthView('register')}
+          onBack={() => updateAuthView('register')}
         />
       );
     }
@@ -92,15 +139,15 @@ const AppContent: React.FC = () => {
     if (authView === 'forgot_password') {
       return (
         <ForgotPasswordPage
-          onBackToLogin={() => setAuthView('login')}
+          onBackToLogin={() => updateAuthView('login')}
         />
       );
     }
 
     return (
       <LandingPage
-        onGetStarted={() => setAuthView('register')}
-        onLogin={() => setAuthView('login')}
+        onGetStarted={() => updateAuthView('register')}
+        onLogin={() => updateAuthView('login')}
       />
     );
   }

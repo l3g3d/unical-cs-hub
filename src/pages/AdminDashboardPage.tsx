@@ -1208,6 +1208,7 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                         <tr>
                           <th className="py-2.5 px-3">Recipient Email</th>
                           <th className="py-2.5 px-3">Event Type</th>
+                          <th className="py-2.5 px-3">Verification OTP</th>
                           <th className="py-2.5 px-3">Provider</th>
                           <th className="py-2.5 px-3">Status</th>
                           <th className="py-2.5 px-3 text-right">Time</th>
@@ -1221,6 +1222,15 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                               <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold">
                                 {log.type}
                               </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {log.code ? (
+                                <span className="font-mono text-xs font-bold text-royal-700 bg-royal-50 border border-royal-200 px-2 py-0.5 rounded tracking-wider">
+                                  {log.code}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-mono text-[11px]">—</span>
+                              )}
                             </td>
                             <td className="py-2.5 px-3 text-slate-600 font-medium">{log.provider}</td>
                             <td className="py-2.5 px-3">

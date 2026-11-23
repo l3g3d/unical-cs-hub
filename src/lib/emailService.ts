@@ -21,6 +21,7 @@ export interface EmailLogEntry {
   id: string;
   to: string;
   type: string;
+  code?: string;
   timestamp: string;
   status: 'SENT' | 'DELIVERED' | 'QUEUED';
   provider: string;
@@ -47,12 +48,13 @@ export const EmailService = {
     return [];
   },
 
-  addLog(to: string, type: string, status: 'SENT' | 'DELIVERED' | 'QUEUED', provider: string) {
+  addLog(to: string, type: string, status: 'SENT' | 'DELIVERED' | 'QUEUED', provider: string, code?: string) {
     const logs = this.getLogs();
     const entry: EmailLogEntry = {
       id: 'log-' + Date.now(),
       to,
       type,
+      code,
       timestamp: new Date().toISOString(),
       status,
       provider,
@@ -72,8 +74,12 @@ export const EmailService = {
       provider: config.provider,
     };
 
-    // Determine function endpoint
-    const endpoint = window.location.hostname.includes('netlify.app')
+    // Determine function endpoint: prefer local relative on Netlify, fallback to production domain on localhost/other hosts
+    const isNetlifyDomain = typeof window !== 'undefined' && (
+      window.location.hostname.endsWith('netlify.app') ||
+      window.location.hostname === 'unicalcshub.netlify.app'
+    );
+    const endpoint = isNetlifyDomain
       ? '/.netlify/functions/send-email'
       : 'https://unicalcshub.netlify.app/.netlify/functions/send-email';
 
@@ -91,12 +97,12 @@ export const EmailService = {
         console.warn('[EmailService] Remote dispatch HTTP status:', res.status, errorText);
       }
 
-      this.addLog(options.to, options.type, 'SENT', config.provider || 'netlify-serverless');
+      this.addLog(options.to, options.type, 'SENT', config.provider || 'netlify-serverless', options.code);
       return { success: true };
     } catch (err: any) {
       console.warn('[EmailService] Local fetch notice:', err.message);
       // Still log and return true so the user can enter their code seamlessly
-      this.addLog(options.to, options.type, 'QUEUED', 'browser-dispatcher');
+      this.addLog(options.to, options.type, 'QUEUED', 'browser-dispatcher', options.code);
       return { success: true };
     }
   },

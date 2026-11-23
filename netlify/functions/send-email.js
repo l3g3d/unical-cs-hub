@@ -1,8 +1,9 @@
-// Netlify Serverless Function: Real Email OTP Dispatcher
+// Netlify Serverless Function (ES Module): Real Email OTP Dispatcher
 // UNICAL CS HUB - Department of Computer Science, University of Calabar
 // Supports Resend API, Brevo API, and Direct SMTP Relay
 
-const https = require('https');
+import https from 'node:https';
+import tls from 'node:tls';
 
 // Helper to wrap emails in the official UNICAL Computer Science design
 function generateEmailHtml({ title, subtitle, badgeText, code, recipientName, noteText }) {
@@ -101,7 +102,7 @@ function generateEmailHtml({ title, subtitle, badgeText, code, recipientName, no
       margin-bottom: 8px;
     }
     .otp-code {
-      font-family: 'Courier New', Courier, monospace, monospace;
+      font-family: 'Courier New', Courier, monospace;
       font-size: 40px;
       font-weight: 900;
       letter-spacing: 10px;
@@ -268,7 +269,75 @@ function sendWithBrevo(apiKey, senderEmail, toEmail, subject, html, text) {
   });
 }
 
-exports.handler = async (event, context) => {
+// Dispatches via Native SMTPS (e.g. Gmail port 465 with App Password)
+function sendWithSmtp({ host, port = 465, user, pass, to, subject, html, text }) {
+  return new Promise((resolve, reject) => {
+    const socket = tls.connect(port, host, { rejectUnauthorized: false }, () => {
+      let step = 0;
+      let log = '';
+
+      const send = (cmd) => {
+        socket.write(cmd + '\r\n');
+      };
+
+      socket.on('data', (chunk) => {
+        const msg = chunk.toString();
+        log += msg;
+
+        if (step === 0 && msg.startsWith('220')) {
+          step = 1;
+          send('EHLO unicalcshub');
+        } else if (step === 1 && msg.startsWith('250')) {
+          step = 2;
+          send('AUTH LOGIN');
+        } else if (step === 2 && msg.startsWith('334')) {
+          step = 3;
+          send(Buffer.from(user).toString('base64'));
+        } else if (step === 3 && msg.startsWith('334')) {
+          step = 4;
+          send(Buffer.from(pass).toString('base64'));
+        } else if (step === 4 && msg.startsWith('235')) {
+          step = 5;
+          send(`MAIL FROM:<${user}>`);
+        } else if (step === 5 && msg.startsWith('250')) {
+          step = 6;
+          send(`RCPT TO:<${to}>`);
+        } else if (step === 6 && msg.startsWith('250')) {
+          step = 7;
+          send('DATA');
+        } else if (step === 7 && msg.startsWith('354')) {
+          step = 8;
+          const emailData = [
+            `From: "UNICAL CS HUB" <${user}>`,
+            `To: <${to}>`,
+            `Subject: ${subject}`,
+            'MIME-Version: 1.0',
+            'Content-Type: text/html; charset=UTF-8',
+            '',
+            html,
+            '.',
+          ].join('\r\n');
+          send(emailData);
+        } else if (step === 8 && msg.startsWith('250')) {
+          step = 9;
+          send('QUIT');
+          resolve({ ok: true, provider: 'smtp-gmail' });
+        } else if (msg.startsWith('5')) {
+          socket.end();
+          reject(new Error(`SMTP Error: ${msg.trim()}`));
+        }
+      });
+
+      socket.on('error', (err) => reject(err));
+      socket.setTimeout(12000, () => {
+        socket.destroy();
+        reject(new Error('SMTP connection timed out after 12s'));
+      });
+    });
+  });
+}
+
+export const handler = async (event, context) => {
   // CORS Headers
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -291,7 +360,7 @@ exports.handler = async (event, context) => {
 
   try {
     const data = JSON.parse(event.body || '{}');
-    const { to, fullName, type, code, apiKey: clientApiKey, provider: clientProvider } = data;
+    const { to, fullName, type, code, apiKey: clientApiKey, provider: clientProvider, smtpPass: clientSmtpPass } = data;
 
     if (!to || !code) {
       return {
@@ -329,37 +398,47 @@ exports.handler = async (event, context) => {
 
     const plainText = `UNICAL CS HUB\nDepartment of Computer Science - University of Calabar\n\nHello ${fullName || 'Student'},\n\nYour 6-digit code is: ${code}\nThis code is valid for 5 minutes.\n\nNever share this code with anyone.\n\n— Divine Christopher Inyang (Course Representative)`;
 
-    // Check for API Keys
+    // Check for Available Providers
     const resendKey = clientApiKey || process.env.RESEND_API_KEY;
     const brevoKey = process.env.BREVO_API_KEY;
+    const smtpPass = clientSmtpPass || process.env.SMTP_PASS;
+    const smtpUser = process.env.SMTP_USER || 'divineinyang636@gmail.com';
+    const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
 
     let deliveryResult = null;
     let usedProvider = 'serverless-dispatcher';
 
-    if (resendKey) {
+    // 1. Try Direct SMTP (Gmail) if password provided
+    if (smtpPass) {
+      try {
+        deliveryResult = await sendWithSmtp({
+          host: smtpHost,
+          port: 465,
+          user: smtpUser,
+          pass: smtpPass,
+          to,
+          subject,
+          html,
+          text: plainText,
+        });
+        usedProvider = 'gmail-smtp';
+      } catch (smtpErr) {
+        console.warn('[EmailFunction] SMTP error:', smtpErr.message);
+      }
+    }
+
+    // 2. Try Resend
+    if (!deliveryResult && resendKey) {
       try {
         const fromEmail = process.env.EMAIL_FROM || 'UNICAL CS HUB <onboarding@resend.dev>';
         deliveryResult = await sendWithResend(resendKey, fromEmail, to, subject, html, plainText);
         usedProvider = 'resend';
       } catch (resendErr) {
         console.warn('[EmailFunction] Resend error:', resendErr.message);
-        if (!brevoKey) {
-          // If Resend failed (e.g. testing domain restriction), return helpful detail
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
-              success: true,
-              delivered: false,
-              provider: 'resend',
-              warning: resendErr.message,
-              message: 'Verification code generated and registered in security cache.',
-            }),
-          };
-        }
       }
     }
 
+    // 3. Try Brevo
     if (!deliveryResult && brevoKey) {
       try {
         deliveryResult = await sendWithBrevo(brevoKey, process.env.EMAIL_FROM, to, subject, html, plainText);
@@ -369,7 +448,6 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Return success
     return {
       statusCode: 200,
       headers,
