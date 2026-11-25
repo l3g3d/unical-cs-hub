@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 
@@ -27,9 +27,44 @@ import { ShieldAlert } from 'lucide-react';
 const AppContent: React.FC = () => {
   const { user, isAdmin, isLoading } = useAuth();
 
-  // Navigation tab state
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [selectedCourseParam, setSelectedCourseParam] = useState<string | undefined>(undefined);
+  // Navigation tab state with localStorage persistence across browser refreshes
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('unical_hub_active_tab');
+      const validTabs = ['dashboard', 'notes', 'timetable', 'venues', 'assignments', 'payment', 'complaints', 'profile', 'admin'];
+      if (saved && validTabs.includes(saved)) {
+        return saved;
+      }
+    } catch {}
+    return 'dashboard';
+  });
+
+  const [selectedCourseParam, setSelectedCourseParam] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem('unical_hub_selected_course') || undefined;
+    } catch {}
+    return undefined;
+  });
+
+  // Keep active tab persisted so refreshing never loses the current page
+  useEffect(() => {
+    try {
+      if (activeTab) {
+        localStorage.setItem('unical_hub_active_tab', activeTab);
+      }
+    } catch {}
+  }, [activeTab]);
+
+  // Keep selected course persisted
+  useEffect(() => {
+    try {
+      if (selectedCourseParam) {
+        localStorage.setItem('unical_hub_selected_course', selectedCourseParam);
+      } else {
+        localStorage.removeItem('unical_hub_selected_course');
+      }
+    } catch {}
+  }, [selectedCourseParam]);
 
   // Unauthenticated flow view with sessionStorage persistence
   const [authView, setAuthView] = useState<'landing' | 'login' | 'register' | 'verify_otp' | 'forgot_password'>(() => {

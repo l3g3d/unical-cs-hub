@@ -34,7 +34,7 @@ export const EmailService = {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
       if (saved) return JSON.parse(saved);
     } catch {}
-    return { provider: 'serverless' };
+    return { provider: 'brevo' };
   },
 
   saveConfig(config: EmailConfig) {
@@ -67,13 +67,24 @@ export const EmailService = {
 
   async dispatchOtpEmail(options: EmailDispatchOptions): Promise<{ success: boolean; delivered: boolean; error?: string }> {
     const config = this.getConfig();
+    let apiKey = config.apiKey;
+    if (!apiKey) {
+      try {
+        const raw = localStorage.getItem('unical_hub_central_data');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          apiKey = parsed.emailConfig?.apiKey || parsed.brevoApiKey;
+        }
+      } catch {}
+    }
+
     const payload = {
       to: options.to.trim().toLowerCase(),
       fullName: options.fullName,
       type: options.type,
       code: options.code,
-      apiKey: config.apiKey,
-      provider: config.provider,
+      apiKey: apiKey || config.apiKey,
+      provider: config.provider || 'brevo',
     };
 
     // Determine function endpoint: prefer local relative on Netlify, fallback to production domain

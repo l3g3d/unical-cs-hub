@@ -26,7 +26,7 @@ export interface ChatMessage {
 const SYSTEM_INSTRUCTIONS = `You are "CS HUB AI ASSISTANT", the official academic AI helper for the Course Representative and Administrators of the Computer Science Department (100 Level), University of Calabar, Nigeria.
 
 YOUR MISSION:
-Help the administrator manage the departmental portal through natural conversation and voice commands.
+Help the administrator manage the departmental portal through natural conversation and voice commands. You assist the Course Representative (Divine Christopher Inyang).
 
 THE SEVEN UNICAL 100L COURSES:
 1. COS101 — Introduction to Computer Sciences
@@ -45,6 +45,7 @@ COMMON VENUES IN UNICAL:
 - Physics Lecture Theatre
 - Physics Laboratory 2
 - Maths & Stats Hall 2
+- Computing Lecture Hall
 
 STRICT SECURITY RESTRICTIONS (DO NOT VIOLATE):
 - You MUST NEVER approve or reject student ₦500 payments.
@@ -52,8 +53,11 @@ STRICT SECURITY RESTRICTIONS (DO NOT VIOLATE):
 - You MUST NEVER change student roles, passwords, or create administrator accounts.
 - If asked, state: "Security Policy: Payment verifications and role assignments cannot be performed by AI and must be processed manually in the Payment Hub."
 
-WHEN EXECUTING ACTIONS:
-You do NOT directly modify data silently. Instead, you extract parameters and return a structured JSON action proposal for the administrator to review and confirm with a preview card.
+CRITICAL ACCURACY & INTEGRITY RULES (VERY IMPORTANT):
+1. ONLY PROPOSE ACTIONS THE USER SPECIFICALLY ASKED FOR. Never modify, guess, or invent anything the user did not explicitly request.
+2. DO NOT FABRICATE OR GUESS MISSING DATA. If the user asks to add a class, change a venue, create an assignment, or upload notes, but DOES NOT provide the necessary details (such as course code, day, time, venue, or topic), DO NOT guess defaults! Instead, return action: null and a polite conversational message asking the user for the specific missing details.
+3. FAITHFULLY EXTRACT PARAMETERS. If the user says "Change venue of COS101 to SLT", do NOT touch other courses, timetables, or notes.
+4. FOR CASUAL CHAT OR QUESTIONS. If the user is just saying hello, asking a question, or discussing courses, return action: null with a helpful, friendly academic reply. Never propose an action for general conversation.
 
 Available Action Types:
 - ADD_TIMETABLE_CLASS
@@ -66,7 +70,7 @@ Available Action Types:
 - UPLOAD_NOTE
 - UPDATE_COURSE_REP
 
-Respond in this exact JSON structure when an action is detected:
+Respond in this exact JSON structure when an action is confirmed:
 {
   "message": "Conversational reply explaining what you have prepared...",
   "action": {
@@ -76,13 +80,65 @@ Respond in this exact JSON structure when an action is detected:
   }
 }
 
-If no specific database action is needed (e.g. general conversation, asking for clarification, greeting, answering questions about the 7 courses), return:
+If no specific database action is needed or details are missing, return:
 {
-  "message": "Your conversational reply here",
+  "message": "Your conversational reply or clarifying question here",
   "action": null
 }
 
 Always be courteous, respectful, and academic.`;
+
+function extractCourse(input: string): { code: string; title: string } | null {
+  const lower = input.toLowerCase();
+  if (lower.match(/\b(cos\s*101|computer\s*science\s*101)\b/)) return { code: 'COS101', title: 'Introduction to Computer Sciences' };
+  if (lower.match(/\b(csc\s*181|lab\s*181|computer\s*lab)\b/)) return { code: 'CSC181', title: 'Computer Laboratory IA' };
+  if (lower.match(/\b(gst\s*111|english|communication\s*in\s*english)\b/)) return { code: 'GST111', title: 'Communication in English' };
+  if (lower.match(/\b(mth\s*101|math|maths|mathematics)\b/)) return { code: 'MTH101', title: 'Elementary Mathematics 1' };
+  if (lower.match(/\b(phy\s*101|physics\s*101)\b/)) return { code: 'PHY101', title: 'Introduction to Physics I' };
+  if (lower.match(/\b(phy\s*107|physics\s*practical|practical\s*physics)\b/)) return { code: 'PHY107', title: 'General Physics Practical I' };
+  if (lower.match(/\b(sta\s*111|statistics|stats)\b/)) return { code: 'STA111', title: 'Basic Statistics' };
+  return null;
+}
+
+function extractDay(input: string): string | null {
+  const lower = input.toLowerCase();
+  if (lower.includes('monday')) return 'Monday';
+  if (lower.includes('tuesday')) return 'Tuesday';
+  if (lower.includes('wednesday')) return 'Wednesday';
+  if (lower.includes('thursday')) return 'Thursday';
+  if (lower.includes('friday')) return 'Friday';
+  if (lower.includes('saturday')) return 'Saturday';
+  return null;
+}
+
+function extractTime(input: string): { startTime: string; endTime: string } | null {
+  const lower = input.toLowerCase();
+  if (lower.includes('8 am') || lower.includes('8:00') || lower.includes('08:00')) return { startTime: '08:00', endTime: '10:00' };
+  if (lower.includes('9 am') || lower.includes('9:00') || lower.includes('09:00')) return { startTime: '09:00', endTime: '11:00' };
+  if (lower.includes('10 am') || lower.includes('10:00')) return { startTime: '10:00', endTime: '12:00' };
+  if (lower.includes('11 am') || lower.includes('11:00')) return { startTime: '11:00', endTime: '13:00' };
+  if (lower.includes('12 pm') || lower.includes('12:00')) return { startTime: '12:00', endTime: '14:00' };
+  if (lower.includes('1 pm') || lower.includes('13:00')) return { startTime: '13:00', endTime: '15:00' };
+  if (lower.includes('2 pm') || lower.includes('14:00')) return { startTime: '14:00', endTime: '16:00' };
+  if (lower.includes('3 pm') || lower.includes('15:00')) return { startTime: '15:00', endTime: '17:00' };
+  if (lower.includes('4 pm') || lower.includes('16:00')) return { startTime: '16:00', endTime: '18:00' };
+  return null;
+}
+
+function extractVenue(input: string): string | null {
+  const lower = input.toLowerCase();
+  if (lower.includes('slt') || lower.includes('science lecture theatre')) return 'Science Lecture Theatre (SLT)';
+  if (lower.includes('hardware lab') || lower.includes('departmental lab') || lower.includes('computer lab')) return 'Departmental Hardware Lab';
+  if (lower.includes('ces b') || lower.includes('ces hall b')) return 'CES Hall B';
+  if (lower.includes('ces')) return 'CES Hall A';
+  if (lower.includes('complex hall 2') || lower.includes('science complex 2')) return 'New Science Complex Hall 2';
+  if (lower.includes('complex') || lower.includes('science complex')) return 'New Science Complex Hall 1';
+  if (lower.includes('physics lab') || lower.includes('physics laboratory')) return 'Physics Laboratory 2';
+  if (lower.includes('physics theatre') || lower.includes('physics lecture')) return 'Physics Lecture Theatre';
+  if (lower.includes('maths') || lower.includes('stats hall')) return 'Maths & Stats Hall 2';
+  if (lower.includes('computing')) return 'Computing Lecture Hall';
+  return null;
+}
 
 // Intelligent client-side rule extractor fallback if API call fails or quota reached
 function fallbackRuleExtractor(input: string): { message: string; action: AiProposedAction | null } {
@@ -97,53 +153,39 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
   }
 
   // Detect Timetable / Class addition
-  if ((lower.includes('add') || lower.includes('schedule')) && (lower.includes('class') || lower.includes('lecture') || lower.includes('timetable') || lower.match(/\b(cos101|csc181|gst111|mth101|phy101|phy107|sta111)\b/))) {
-    let courseCode = 'COS101';
-    let courseTitle = 'Introduction to Computer Sciences';
-    if (lower.includes('csc181')) { courseCode = 'CSC181'; courseTitle = 'Computer Laboratory IA'; }
-    else if (lower.includes('gst111')) { courseCode = 'GST111'; courseTitle = 'Communication in English'; }
-    else if (lower.includes('mth101')) { courseCode = 'MTH101'; courseTitle = 'Elementary Mathematics 1'; }
-    else if (lower.includes('phy101')) { courseCode = 'PHY101'; courseTitle = 'Introduction to Physics I'; }
-    else if (lower.includes('phy107')) { courseCode = 'PHY107'; courseTitle = 'General Physics Practical I'; }
-    else if (lower.includes('sta111')) { courseCode = 'STA111'; courseTitle = 'Basic Statistics'; }
+  if ((lower.includes('add') || lower.includes('schedule')) && (lower.includes('class') || lower.includes('lecture') || lower.includes('timetable'))) {
+    const course = extractCourse(input);
+    const day = extractDay(input);
+    const time = extractTime(input);
+    const venue = extractVenue(input);
 
-    let day = 'Monday';
-    if (lower.includes('tuesday')) day = 'Tuesday';
-    else if (lower.includes('wednesday')) day = 'Wednesday';
-    else if (lower.includes('thursday')) day = 'Thursday';
-    else if (lower.includes('friday')) day = 'Friday';
+    if (!course || !day || !time) {
+      const missing: string[] = [];
+      if (!course) missing.push('course code (e.g. COS101)');
+      if (!day) missing.push('day of the week (e.g. Monday)');
+      if (!time) missing.push('lecture time (e.g. 10:00 AM)');
+      return {
+        message: `To add a class to the timetable accurately without making mistakes, please specify the ${missing.join(', ')}.`,
+        action: null
+      };
+    }
 
-    let startTime = '10:00';
-    let endTime = '12:00';
-    if (lower.includes('8 am') || lower.includes('8:00') || lower.includes('08:00')) { startTime = '08:00'; endTime = '10:00'; }
-    else if (lower.includes('9 am') || lower.includes('9:00') || lower.includes('09:00')) { startTime = '09:00'; endTime = '11:00'; }
-    else if (lower.includes('10 am') || lower.includes('10:00')) { startTime = '10:00'; endTime = '12:00'; }
-    else if (lower.includes('11 am') || lower.includes('11:00')) { startTime = '11:00'; endTime = '13:00'; }
-    else if (lower.includes('12 pm') || lower.includes('12:00')) { startTime = '12:00'; endTime = '14:00'; }
-    else if (lower.includes('1 pm') || lower.includes('13:00')) { startTime = '13:00'; endTime = '15:00'; }
-    else if (lower.includes('2 pm') || lower.includes('14:00')) { startTime = '14:00'; endTime = '16:00'; }
-
-    let venue = 'Science Lecture Theatre (SLT)';
-    if (lower.includes('lab') || lower.includes('laboratory')) venue = 'Departmental Hardware Lab';
-    else if (lower.includes('ces')) venue = 'CES Hall A';
-    else if (lower.includes('science complex')) venue = 'New Science Complex Hall 1';
-    else if (lower.includes('physics theatre')) venue = 'Physics Lecture Theatre';
-    else if (lower.includes('computing lecture hall') || lower.includes('computing hall')) venue = 'Computing Lecture Hall';
+    const assignedVenue = venue || 'Science Lecture Theatre (SLT)';
 
     return {
-      message: `I have prepared a new timetable entry for ${courseCode} (${courseTitle}) on ${day} at ${startTime}. Please review and confirm below.`,
+      message: `I have prepared a new timetable entry for ${course.code} (${course.title}) on ${day} at ${time.startTime} in ${assignedVenue}. Please review and confirm below.`,
       action: {
         id: 'act-' + Date.now(),
         type: 'ADD_TIMETABLE_CLASS',
-        summary: `Add ${courseCode} lecture on ${day} (${startTime} - ${endTime}) at ${venue}`,
+        summary: `Add ${course.code} lecture on ${day} (${time.startTime} - ${time.endTime}) at ${assignedVenue}`,
         details: {
-          courseCode,
-          courseTitle,
+          courseCode: course.code,
+          courseTitle: course.title,
           dayOfWeek: day,
-          startTime,
-          endTime,
-          venue,
-          lecturer: courseCode === 'COS101' ? 'Dr. A. E. Effiong' : 'Course Lecturer'
+          startTime: time.startTime,
+          endTime: time.endTime,
+          venue: assignedVenue,
+          lecturer: course.code === 'COS101' ? 'Dr. A. E. Effiong' : 'Course Lecturer'
         },
         status: 'PENDING'
       }
@@ -151,28 +193,25 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
   }
 
   // Detect Venue Change
-  if (lower.includes('venue') && (lower.includes('change') || lower.includes('move') || lower.includes('update'))) {
-    let courseCode = 'COS101';
-    if (lower.includes('csc181')) courseCode = 'CSC181';
-    else if (lower.includes('gst111')) courseCode = 'GST111';
-    else if (lower.includes('mth101')) courseCode = 'MTH101';
-    else if (lower.includes('phy101')) courseCode = 'PHY101';
-    else if (lower.includes('phy107')) courseCode = 'PHY107';
-    else if (lower.includes('sta111')) courseCode = 'STA111';
+  if (lower.includes('venue') && (lower.includes('change') || lower.includes('move') || lower.includes('update') || lower.includes('relocate'))) {
+    const course = extractCourse(input);
+    const venue = extractVenue(input);
 
-    let venue = 'Computing Lecture Hall';
-    if (lower.includes('slt')) venue = 'Science Lecture Theatre (SLT)';
-    else if (lower.includes('ces')) venue = 'CES Hall A';
-    else if (lower.includes('complex')) venue = 'New Science Complex Hall 1';
+    if (!course || !venue) {
+      return {
+        message: `To change a lecture venue accurately, please specify which course (e.g. COS101) and what the new venue should be (e.g. SLT, CES Hall A).`,
+        action: null
+      };
+    }
 
     return {
-      message: `I have formulated a venue update for ${courseCode} moving to ${venue}. Students will also see this highlighted in their venue tracker.`,
+      message: `I have formulated a venue update for ${course.code} moving to ${venue}. Students will also see this highlighted in their venue tracker.`,
       action: {
         id: 'act-' + Date.now(),
         type: 'CHANGE_VENUE',
-        summary: `Relocate ${courseCode} lecture to ${venue}`,
+        summary: `Relocate ${course.code} lecture to ${venue}`,
         details: {
-          courseCode,
+          courseCode: course.code,
           venueName: venue,
           changeNotice: `Notice: Lecture venue updated to ${venue}. Please be seated 10 mins early.`
         },
@@ -182,29 +221,35 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
   }
 
   // Detect Assignment creation
-  if (lower.includes('assignment') && (lower.includes('create') || lower.includes('add') || lower.includes('post') || lower.includes('give'))) {
-    let courseCode = 'STA111';
-    if (lower.includes('cos101')) courseCode = 'COS101';
-    else if (lower.includes('csc181')) courseCode = 'CSC181';
-    else if (lower.includes('gst111')) courseCode = 'GST111';
-    else if (lower.includes('mth101')) courseCode = 'MTH101';
-    else if (lower.includes('phy101')) courseCode = 'PHY101';
-    else if (lower.includes('phy107')) courseCode = 'PHY107';
+  if (lower.includes('assignment') && (lower.includes('create') || lower.includes('add') || lower.includes('post') || lower.includes('give') || lower.includes('new'))) {
+    const course = extractCourse(input);
+    let topic = '';
 
-    const topic = lower.includes('dispersion')
-      ? 'Measures of Dispersion and Standard Deviation'
-      : lower.includes('binary')
-      ? 'Binary Arithmetic and Logic Gates'
-      : 'Continuous Assessment Assignment 1';
+    const quotesMatch = input.match(/"([^"]+)"/) || input.match(/'([^']+)'/);
+    if (quotesMatch && quotesMatch[1]) {
+      topic = quotesMatch[1];
+    } else {
+      const topicMatch = input.match(/(?:titled|on|about|topic)\s+(.+?)(?:$|\.|\band\b)/i);
+      if (topicMatch && topicMatch[1]) {
+        topic = topicMatch[1].trim();
+      }
+    }
+
+    if (!course || !topic) {
+      return {
+        message: `To create an assignment without mistakes, please tell me which course it is for (e.g. STA111 or COS101) and the assignment topic or title.`,
+        action: null
+      };
+    }
 
     return {
-      message: `I have structured an assignment for ${courseCode} titled "${topic}". Please verify the deadline and instructions below.`,
+      message: `I have structured an assignment for ${course.code} titled "${topic}". Please verify the deadline and instructions below.`,
       action: {
         id: 'act-' + Date.now(),
         type: 'CREATE_ASSIGNMENT',
-        summary: `Create ${courseCode} Assignment: "${topic}"`,
+        summary: `Create ${course.code} Assignment: "${topic}"`,
         details: {
-          courseCode,
+          courseCode: course.code,
           title: topic,
           instructions: 'Solve all questions clearly on clean sheets or type in Word/PDF format. Submit your assignment file through the CS HUB portal before the deadline.',
           dueDate: new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString().split('T')[0] + 'T17:00',
@@ -216,10 +261,21 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
   }
 
   // Detect Announcement / Event
-  if (lower.includes('announcement') || lower.includes('event') || lower.includes('meeting')) {
-    const title = lower.includes('meeting')
-      ? 'Computer Science Departmental Meeting (100 Level)'
-      : 'Important Departmental Notice for 100 Level Students';
+  if (lower.includes('announcement') && (lower.includes('publish') || lower.includes('post') || lower.includes('broadcast') || lower.includes('make') || lower.includes('send'))) {
+    let content = '';
+    const match = input.match(/(?:announcement|broadcast)\s*(?:that|saying|:)?\s+(.+)$/i);
+    if (match && match[1] && match[1].length > 5) {
+      content = match[1].trim();
+    }
+
+    if (!content) {
+      return {
+        message: `What announcement would you like to broadcast to students? Please provide the title and message details.`,
+        action: null
+      };
+    }
+
+    const title = content.length > 50 ? content.slice(0, 47) + '...' : content;
 
     return {
       message: `I have drafted an announcement for you to publish to all 100 level students.`,
@@ -229,7 +285,7 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
         summary: `Publish announcement: "${title}"`,
         details: {
           title,
-          content: 'All 100 level students are required to take note of this departmental update. Ensure you check your timetable and course notes regularly.',
+          content,
           priority: 'NORMAL',
           targetLevel: '100'
         },
@@ -240,40 +296,44 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
 
   // Detect Lecture Note upload
   if (lower.includes('note') && (lower.includes('upload') || lower.includes('add') || lower.includes('post') || lower.includes('create'))) {
-    let courseCode = 'COS101';
-    if (lower.includes('csc181')) courseCode = 'CSC181';
-    else if (lower.includes('gst111')) courseCode = 'GST111';
-    else if (lower.includes('mth101')) courseCode = 'MTH101';
-    else if (lower.includes('phy101')) courseCode = 'PHY101';
-    else if (lower.includes('phy107')) courseCode = 'PHY107';
-    else if (lower.includes('sta111')) courseCode = 'STA111';
+    const course = extractCourse(input);
+    let topic = '';
 
-    let lectureNumber = 3;
+    const quotesMatch = input.match(/"([^"]+)"/) || input.match(/'([^']+)'/);
+    if (quotesMatch && quotesMatch[1]) {
+      topic = quotesMatch[1];
+    } else {
+      const topicMatch = input.match(/(?:titled|on|about|topic)\s+(.+?)(?:$|\.|\band\b)/i);
+      if (topicMatch && topicMatch[1]) {
+        topic = topicMatch[1].trim();
+      }
+    }
+
+    if (!course || !topic) {
+      return {
+        message: `To upload course notes accurately, please tell me which course it is for (e.g. COS101) and what the lecture topic is.`,
+        action: null
+      };
+    }
+
+    let lectureNumber = 1;
     const lecMatch = lower.match(/lecture\s*(\d+)/i) || lower.match(/lec\s*(\d+)/i);
     if (lecMatch && lecMatch[1]) {
       lectureNumber = parseInt(lecMatch[1], 10);
     }
 
-    const topic = lower.includes('binary')
-      ? 'Binary Arithmetic and Boolean Logic'
-      : lower.includes('matrix') || lower.includes('matrices')
-      ? 'Matrix Operations and Linear Systems'
-      : lower.includes('grammar') || lower.includes('concord')
-      ? 'Grammatical Concord and Sentence Construction'
-      : `Lecture ${lectureNumber} Core Concepts`;
-
     return {
-      message: `I have prepared a new course note entry for ${courseCode} (Lecture ${lectureNumber}: "${topic}"). Please review and confirm upload below.`,
+      message: `I have prepared a new course note entry for ${course.code} (Lecture ${lectureNumber}: "${topic}"). Please review and confirm upload below.`,
       action: {
         id: 'act-' + Date.now(),
         type: 'UPLOAD_NOTE',
-        summary: `Upload Note for ${courseCode}: Lecture ${lectureNumber} - ${topic}`,
+        summary: `Upload Note for ${course.code}: Lecture ${lectureNumber} - ${topic}`,
         details: {
-          courseCode,
+          courseCode: course.code,
           lectureNumber,
           topic,
           description: `Comprehensive lecture notes covering ${topic}.`,
-          fileName: `${courseCode}_Lecture${lectureNumber}_${topic.replace(/\s+/g, '_')}.pdf`,
+          fileName: `${course.code}_Lecture${lectureNumber}_${topic.replace(/\s+/g, '_')}.pdf`,
           fileSize: '1.4 MB',
           fileUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'
         },
@@ -286,6 +346,13 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
   if (lower.includes('course rep') || lower.includes('representative') || (lower.includes('rep') && (lower.includes('phone') || lower.includes('email') || lower.includes('contact')))) {
     const phoneMatch = input.match(/0\d{10}/);
     const emailMatch = input.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+
+    if (!phoneMatch && !emailMatch) {
+      return {
+        message: `What information for the Course Representative would you like to update? Please provide a new 11-digit phone number or email address.`,
+        action: null
+      };
+    }
 
     return {
       message: `I have formulated an update for the official Course Representative card. Please review the details below.`,
@@ -304,15 +371,15 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
   }
 
   // Conversational response
-  if (lower.includes('organise') || lower.includes('organize') || lower.includes('timetable')) {
+  if (lower.includes('timetable') || lower.includes('schedule') || lower.includes('organize') || lower.includes('organise')) {
     return {
-      message: `I would be glad to help you organize next week's timetable! Which course would you like to schedule first? We have:\n\n• COS101 (Intro to CS)\n• CSC181 (Computer Lab)\n• GST111 (English)\n• MTH101 (Mathematics)\n• PHY101 (Physics)\n• PHY107 (Physics Practical)\n• STA111 (Statistics)\n\nJust tell me: "Add [Course] on [Day] at [Time] in [Venue]" or speak it via the microphone!`,
+      message: `I would be glad to help you manage the weekly timetable! Tell me which course you want to schedule and include the day, time, and venue.\n\nExample:\n"Add COS101 on Monday at 10 am in SLT"`,
       action: null
     };
   }
 
   return {
-    message: `Hello Course Rep! I am your CS HUB AI Assistant. You can speak or type commands to:\n• Add or modify weekly timetable lectures\n• Post continuous assessment assignments\n• Change or alert students about lecture venues\n• Broadcast departmental announcements\n\nHow can I help you today?`,
+    message: `Hello Course Rep Divine! I am your CS HUB AI Assistant. I can help you accurately manage:\n• Timetable classes (specify course, day, time, venue)\n• Lecture venue relocations\n• Course assignments & lecture notes\n• Departmental announcements\n\nTell me what you need done and I will execute it precisely without guessing.`,
     action: null
   };
 }

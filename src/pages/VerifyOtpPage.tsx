@@ -129,29 +129,21 @@ export const VerifyOtpPage: React.FC<Props> = ({
             <div className="mb-5 p-3.5 rounded-xl bg-royal-50/80 border border-royal-200/80 text-xs text-royal-950 flex items-start gap-3">
               <MailCheck className="w-5 h-5 text-royal-600 flex-shrink-0 mt-0.5" />
               <div>
-                <div className="font-bold text-royal-950 mb-0.5">Verification Code Dispatched</div>
+                <div className="font-bold text-royal-950 mb-0.5">Verification Code Dispatched via Email</div>
                 <p className="text-slate-600 leading-relaxed text-[11px]">
                   A 6-digit one-time verification code has been dispatched to <strong>{email}</strong>. Please check your inbox (and your Spam or Junk folder).
                 </p>
               </div>
             </div>
           ) : (
-            <div className="mb-5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2">
-              <div className="flex items-center gap-2 font-bold text-amber-900">
-                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                <span>Instant Student Verification Notice</span>
+            <div className="mb-5 p-3.5 rounded-xl bg-royal-50/80 border border-royal-200/80 text-xs text-royal-950 flex items-start gap-3">
+              <MailCheck className="w-5 h-5 text-royal-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold text-royal-950 mb-0.5">Verification Code Sent</div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  A 6-digit one-time verification code has been sent to <strong>{email}</strong>. Check your inbox and spam folder. If it hasn't dropped, please wait a moment or click <strong>Resend Code</strong> below.
+                </p>
               </div>
-              <p className="text-slate-600 leading-relaxed text-[11px]">
-                Server email dispatch is awaiting live SMTP activation. If this email has not dropped in your inbox, use your one-time verification code below:
-              </p>
-              {pendingCode && (
-                <div className="bg-white border-2 border-dashed border-amber-300 py-2 px-4 rounded-xl text-center font-mono font-black text-xl tracking-widest text-royal-700 w-fit mx-auto shadow-xs">
-                  {pendingCode}
-                </div>
-              )}
-              <p className="text-[10px] text-slate-500 text-center">
-                Enter this 6-digit code below to activate your student account immediately.
-              </p>
             </div>
           )}
 

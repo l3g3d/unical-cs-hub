@@ -4,6 +4,15 @@
 
 import https from 'node:https';
 import tls from 'node:tls';
+import { getStore } from '@netlify/blobs';
+
+function getHubStore() {
+  try {
+    return getStore('unical_hub_global_db');
+  } catch (err) {
+    return null;
+  }
+}
 
 // Helper to wrap emails in the official UNICAL Computer Science design
 function generateEmailHtml({ title, subtitle, badgeText, code, recipientName, noteText }) {
@@ -400,7 +409,25 @@ export const handler = async (event, context) => {
 
     // Check for Available Providers (supports Brevo, Gmail SMTP, and Resend)
     const isBrevo = (clientApiKey && clientApiKey.startsWith('xkeysib-')) || clientProvider === 'brevo';
-    const brevoKey = process.env.BREVO_API_KEY || (isBrevo ? clientApiKey : null);
+    let brevoKey = process.env.BREVO_API_KEY || (isBrevo ? clientApiKey : null);
+
+    // If no direct key from env or client, retrieve from central Netlify Blobs store
+    if (!brevoKey) {
+      const store = getHubStore();
+      if (store) {
+        try {
+          const hubState = await store.get('hub_state', { type: 'json' });
+          if (hubState?.emailConfig?.apiKey) {
+            brevoKey = hubState.emailConfig.apiKey;
+          } else if (hubState?.brevoApiKey) {
+            brevoKey = hubState.brevoApiKey;
+          }
+        } catch (e) {
+          console.warn('[send-email] Central blob store read notice:', e.message);
+        }
+      }
+    }
+
     const resendKey = (!isBrevo ? clientApiKey : null) || process.env.RESEND_API_KEY;
     const smtpPass = clientSmtpPass || process.env.SMTP_PASS;
     const smtpUser = process.env.SMTP_USER || 'divineinyang636@gmail.com';
@@ -408,6 +435,7 @@ export const handler = async (event, context) => {
 
     let deliveryResult = null;
     let usedProvider = 'serverless-dispatcher';
+    let providerError = null;
 
     // 1. Try Brevo REST API (Primary transactional relay - 300 free emails/day to any recipient)
     if (brevoKey) {
@@ -417,6 +445,7 @@ export const handler = async (event, context) => {
         usedProvider = 'brevo';
       } catch (brevoErr) {
         console.warn('[EmailFunction] Brevo error:', brevoErr.message);
+        providerError = brevoErr.message;
       }
     }
 
@@ -434,8 +463,10 @@ export const handler = async (event, context) => {
           text: plainText,
         });
         usedProvider = 'gmail-smtp';
+        providerError = null;
       } catch (smtpErr) {
         console.warn('[EmailFunction] SMTP error:', smtpErr.message);
+        if (!providerError) providerError = smtpErr.message;
       }
     }
 
@@ -445,8 +476,10 @@ export const handler = async (event, context) => {
         const fromEmail = process.env.EMAIL_FROM || 'UNICAL CS HUB <onboarding@resend.dev>';
         deliveryResult = await sendWithResend(resendKey, fromEmail, to, subject, html, plainText);
         usedProvider = 'resend';
+        providerError = null;
       } catch (resendErr) {
         console.warn('[EmailFunction] Resend error:', resendErr.message);
+        if (!providerError) providerError = resendErr.message;
       }
     }
 
@@ -459,7 +492,10 @@ export const handler = async (event, context) => {
         provider: usedProvider,
         recipient: to,
         timestamp: new Date().toISOString(),
-        message: 'Verification code dispatched to student inbox.',
+        error: deliveryResult?.ok ? undefined : (providerError || 'No email delivery provider configured or dispatch failed.'),
+        message: deliveryResult?.ok
+          ? 'Verification code dispatched to student inbox via Brevo.'
+          : 'Email dispatch was not completed. Check email provider configuration.',
       }),
     };
   } catch (err) {

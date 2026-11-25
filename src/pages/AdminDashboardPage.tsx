@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { CourseRepCard } from '../components/common/CourseRepCard';
 import { PaymentStatusBadge } from '../components/common/PaymentStatusBadge';
 import { EmailService, EmailLogEntry } from '../lib/emailService';
 import { getGeminiApiKey, saveGeminiApiKey } from '../lib/gemini';
+import { ApiSync } from '../lib/apiSync';
 import {
   Shield,
   CreditCard,
@@ -69,7 +70,23 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
 
   const [activeAdminTab, setActiveAdminTab] = useState<
     'overview' | 'payments' | 'notes' | 'timetable' | 'assignments' | 'students' | 'complaints' | 'rep' | 'audit' | 'email'
-  >('overview');
+  >(() => {
+    try {
+      const saved = localStorage.getItem('unical_hub_active_admin_tab');
+      const valid = ['overview', 'payments', 'notes', 'timetable', 'assignments', 'students', 'complaints', 'rep', 'audit', 'email'];
+      if (saved && valid.includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'overview';
+  });
+
+  // Persist admin active tab across refreshes
+  useEffect(() => {
+    try {
+      localStorage.setItem('unical_hub_active_admin_tab', activeAdminTab);
+    } catch {}
+  }, [activeAdminTab]);
 
   // Viewing full-size transfer proof receipt modal
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
@@ -87,6 +104,21 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
   const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>(EmailService.getLogs());
   const [testEmailLoading, setTestEmailLoading] = useState(false);
   const [testEmailStatus, setTestEmailStatus] = useState<string | null>(null);
+
+  // Preload Brevo key from central server if missing in local storage
+  useEffect(() => {
+    if (!apiKeyInput) {
+      ApiSync.fetchHubState().then((state) => {
+        if (state?.emailConfig?.apiKey || state?.brevoApiKey) {
+          const key = state.emailConfig?.apiKey || state.brevoApiKey;
+          setApiKeyInput(key);
+          const newCfg = { ...emailConfig, apiKey: key, provider: 'brevo' as const };
+          setEmailConfig(newCfg);
+          EmailService.saveConfig(newCfg);
+        }
+      });
+    }
+  }, []);
 
   // Payments filter
   const [paymentFilter, setPaymentFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
@@ -244,12 +276,21 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
     }
   };
 
-  const handleSaveEmailConfig = (e: React.FormEvent) => {
+  const handleSaveEmailConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newCfg = { ...emailConfig, apiKey: apiKeyInput.trim() };
+    const key = apiKeyInput.trim();
+    const newCfg = { ...emailConfig, apiKey: key, provider: 'brevo' as const };
     EmailService.saveConfig(newCfg);
     setEmailConfig(newCfg);
-    setTestEmailStatus('✅ Email service settings saved successfully!');
+    try {
+      await ApiSync.syncKeyRemotely('emailConfig', newCfg);
+      if (key) {
+        await ApiSync.syncKeyRemotely('brevoApiKey', key);
+      }
+      setTestEmailStatus('✅ Brevo configuration saved and synchronized with central server!');
+    } catch {
+      setTestEmailStatus('✅ Email settings saved locally!');
+    }
     setTimeout(() => setTestEmailStatus(null), 4000);
   };
 
@@ -1286,25 +1327,25 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                     onChange={(e: any) => setEmailConfig({ ...emailConfig, provider: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-medium"
                   >
-                    <option value="serverless">Netlify Serverless Function (Primary)</option>
-                    <option value="resend">Resend API (Official Resend SDK/REST)</option>
-                    <option value="brevo">Brevo / Sendinblue (Transactional REST)</option>
+                    <option value="brevo">Brevo (Sendinblue) — Primary Transactional OTP Relay</option>
+                    <option value="serverless">Netlify Serverless Fallback</option>
+                    <option value="resend">Resend API</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    API Key (Optional for Custom Provider)
+                    Brevo API Key (starts with <span className="font-mono text-royal-600">xkeysib-...</span>)
                   </label>
                   <input
                     type="password"
                     value={apiKeyInput}
                     onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="re_123... (Leave blank to use Netlify env vars)"
+                    placeholder="xkeysib-xxxxxxxxxxxxxxxxxxxxxxx"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Tip: You can set <code className="text-slate-600 font-bold">RESEND_API_KEY</code> in Netlify Environment Variables.
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Once saved, this key synchronizes to the central server so all student registrations receive real OTP emails.
                   </p>
                 </div>
 

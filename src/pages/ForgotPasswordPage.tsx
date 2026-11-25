@@ -166,19 +166,14 @@ export const ForgotPasswordPage: React.FC<Props> = ({ onBackToLogin }) => {
                   </div>
                 </div>
               ) : (
-                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 space-y-2 mb-2">
-                  <div className="flex items-center gap-2 font-bold text-amber-900">
-                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                    <span>Instant Password Recovery Code</span>
+                <div className="p-3 bg-royal-50 border border-royal-200 rounded-xl text-xs text-royal-950 flex items-start gap-2.5 mb-2">
+                  <KeyRound className="w-4 h-4 text-royal-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-royal-950">Recovery Code Sent</div>
+                    <p className="text-slate-600 text-[11px] leading-relaxed mt-0.5">
+                      A 6-digit password recovery code was sent to <strong>{email}</strong>. Check your inbox and spam folder. If it hasn't dropped, please wait a moment or click Back to try again.
+                    </p>
                   </div>
-                  <p className="text-slate-600 leading-relaxed text-[11px]">
-                    If the recovery email has not dropped in your inbox, use your one-time code below:
-                  </p>
-                  {pendingCode && (
-                    <div className="bg-white border-2 border-dashed border-amber-300 py-1.5 px-3 rounded-xl text-center font-mono font-black text-lg tracking-widest text-royal-700 w-fit mx-auto shadow-xs">
-                      {pendingCode}
-                    </div>
-                  )}
                 </div>
               )}
 
