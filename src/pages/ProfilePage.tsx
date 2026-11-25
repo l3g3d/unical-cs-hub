@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { PaymentStatusBadge } from '../components/common/PaymentStatusBadge';
 import {
   User,
@@ -15,10 +16,13 @@ import {
   Save,
   Upload,
   Trash2,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 export const ProfilePage: React.FC = () => {
   const { user, updateProfile } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
@@ -294,6 +298,50 @@ export const ProfilePage: React.FC = () => {
               <span>Update Password</span>
             </button>
           </form>
+        </div>
+      </div>
+
+      {/* Appearance & Portal Theme Selector */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-card">
+        <h3 className="text-sm font-bold text-navy-950 dark:text-white mb-1">Appearance & Interface Theme</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Customize the portal theme to light or dark mode according to your visual preference.</p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setTheme('light')}
+            className={`p-4 rounded-xl border flex items-center gap-3 transition text-left ${
+              theme === 'light'
+                ? 'bg-royal-50/80 border-royal-400 text-royal-950 shadow-xs'
+                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+            }`}
+          >
+            <div className={`p-2.5 rounded-lg ${theme === 'light' ? 'bg-royal-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+              <Sun className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-xs">Light Theme</div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">Bright, clean paper styling</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTheme('dark')}
+            className={`p-4 rounded-xl border flex items-center gap-3 transition text-left ${
+              theme === 'dark'
+                ? 'bg-royal-950/40 border-royal-500 text-royal-200 shadow-glow'
+                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+            }`}
+          >
+            <div className={`p-2.5 rounded-lg ${theme === 'dark' ? 'bg-royal-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+              <Moon className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-xs">Dark Theme</div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">High-contrast night styling</div>
+            </div>
+          </button>
         </div>
       </div>
 

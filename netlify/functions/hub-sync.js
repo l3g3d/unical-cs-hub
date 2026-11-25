@@ -133,6 +133,35 @@ export const handler = async (event, context) => {
         const users = Array.isArray(updatedState.users) ? updatedState.users : [];
         updatedState.users = users.map((u) => (u.id === studentId ? { ...u, paymentStatus } : u));
         updatedState.updatedAt = new Date().toISOString();
+      } else if (action === 'UPDATE_USER_BAN' && data) {
+        const { studentId, isBanned, reason, studentEmail } = data;
+        const users = Array.isArray(updatedState.users) ? updatedState.users : [];
+        updatedState.users = users.map((u) => {
+          if (u.id === studentId || (studentEmail && u.email?.toLowerCase() === studentEmail.toLowerCase())) {
+            return {
+              ...u,
+              isBanned,
+              bannedAt: isBanned ? new Date().toISOString() : undefined,
+              banReason: isBanned ? (reason || 'Suspended by Super Administrator') : undefined,
+            };
+          }
+          return u;
+        });
+        updatedState.updatedAt = new Date().toISOString();
+      } else if (action === 'RECORD_LOGIN' && data) {
+        const { email, timestamp } = data;
+        const users = Array.isArray(updatedState.users) ? updatedState.users : [];
+        updatedState.users = users.map((u) => {
+          if (u.email?.toLowerCase() === email?.toLowerCase()) {
+            return {
+              ...u,
+              lastLoginAt: timestamp || new Date().toISOString(),
+              loginCount: (u.loginCount || 0) + 1,
+            };
+          }
+          return u;
+        });
+        updatedState.updatedAt = new Date().toISOString();
       }
 
       // Save to Blob store

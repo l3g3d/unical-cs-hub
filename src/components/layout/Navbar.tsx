@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { useTheme } from '../../context/ThemeContext';
 import {
   Bell,
   Search,
@@ -12,6 +13,8 @@ import {
   Sparkles,
   ChevronDown,
   CheckCheck,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 interface Props {
@@ -23,6 +26,7 @@ interface Props {
 
 export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi, onSearchSelect }) => {
   const { user, isAdmin, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const { notifications, unreadNotifsCount, markNotificationRead, markAllNotificationsRead, courses, notes, assignments } = useData();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -198,6 +202,20 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi, onS
             </button>
           )}
 
+          {/* Theme Toggle Button (Light/Dark Mode) */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-navy-800 transition"
+            title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-5 h-5 text-amber-400 hover:rotate-45 transition transform duration-300" />
+            ) : (
+              <Moon className="w-5 h-5 text-royal-200 hover:-rotate-12 transition transform duration-300" />
+            )}
+          </button>
+
           {/* Notifications Bell */}
           <div className="relative">
             <button
@@ -318,6 +336,23 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, onOpenAi, onS
                   >
                     <User className="w-4 h-4 text-slate-400" />
                     <span>My Profile</span>
+                  </button>
+
+                  <button
+                    onClick={toggleTheme}
+                    className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center justify-between text-slate-700"
+                  >
+                    <div className="flex items-center gap-2">
+                      {theme === 'dark' ? (
+                        <Sun className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <Moon className="w-4 h-4 text-royal-600" />
+                      )}
+                      <span>Appearance</span>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                      {theme === 'dark' ? 'Dark' : 'Light'}
+                    </span>
                   </button>
 
                   {isAdmin && (

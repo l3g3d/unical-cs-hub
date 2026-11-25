@@ -80,6 +80,14 @@ export const ApiSync = {
     return this.pushUpdate('UPDATE_USER_ACCESS', { studentId, paymentStatus });
   },
 
+  async updateUserBanStatus(studentId: string, isBanned: boolean, reason?: string, studentEmail?: string): Promise<boolean> {
+    return this.pushUpdate('UPDATE_USER_BAN', { studentId, isBanned, reason, studentEmail });
+  },
+
+  async recordUserLogin(email: string): Promise<boolean> {
+    return this.pushUpdate('RECORD_LOGIN', { email, timestamp: new Date().toISOString() });
+  },
+
   async syncKeyRemotely(key: string, data: any): Promise<boolean> {
     return this.pushUpdate('SET_KEY', data, key);
   },

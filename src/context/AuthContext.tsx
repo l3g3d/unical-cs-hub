@@ -31,6 +31,8 @@ interface AuthContextType {
   resetPasswordWithOtp: (email: string, otp: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   getOtpInfo: (email: string) => { code?: string; expiresAt?: number; delivered?: boolean } | null;
   updateProfile: (updates: Partial<UserProfile>) => void;
+  banUser: (studentId: string, reason?: string) => Promise<void>;
+  unbanUser: (studentId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,22 +108,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const syncRemoteUsers = async () => {
     try {
       const hub = await ApiSync.fetchHubState();
-      if (hub && Array.isArray(hub.users)) {
-        const mergedUsers = [...hub.users];
-        if (!mergedUsers.some((u: UserProfile) => u.email.toLowerCase() === ADMIN_EMAIL)) {
-          mergedUsers.unshift(DEFAULT_USERS[0]);
-        }
-        const sanitized = sanitizeUsers(mergedUsers);
-        setRegisteredUsers(sanitized);
-        localStorage.setItem('unical_hub_registered_users', JSON.stringify(sanitized));
+      const localRaw = localStorage.getItem('unical_hub_registered_users');
+      let localUsers: UserProfile[] = [];
+      try {
+        if (localRaw) localUsers = JSON.parse(localRaw);
+      } catch {}
 
-        // Update active session if payment status changed remotely
-        const activeSessionRaw = localStorage.getItem('unical_hub_current_user');
-        if (activeSessionRaw) {
-          const cur = JSON.parse(activeSessionRaw);
-          const match = sanitized.find((u) => u.id === cur.id || u.email.toLowerCase() === cur.email?.toLowerCase());
-          if (match && match.paymentStatus !== cur.paymentStatus) {
-            const updatedCur = { ...cur, paymentStatus: match.paymentStatus };
+      const remoteUsers: UserProfile[] = (hub && Array.isArray(hub.users)) ? hub.users : [];
+
+      // Combine both sources by unique email so no registered student is EVER lost
+      const userMap = new Map<string, UserProfile>();
+      userMap.set(ADMIN_EMAIL, DEFAULT_USERS[0]);
+
+      for (const u of localUsers) {
+        if (u && u.email) {
+          userMap.set(u.email.trim().toLowerCase(), u);
+        }
+      }
+
+      for (const u of remoteUsers) {
+        if (u && u.email) {
+          const em = u.email.trim().toLowerCase();
+          const existing = userMap.get(em);
+          userMap.set(em, { ...existing, ...u });
+        }
+      }
+
+      const combined = sanitizeUsers(Array.from(userMap.values()));
+      setRegisteredUsers(combined);
+      localStorage.setItem('unical_hub_registered_users', JSON.stringify(combined));
+
+      // Push merged list to central cloud if local had more users
+      if (combined.length > remoteUsers.length) {
+        ApiSync.syncKeyRemotely('users', combined);
+      }
+
+      // Update active session if payment status changed or user was banned remotely
+      const activeSessionRaw = localStorage.getItem('unical_hub_current_user');
+      if (activeSessionRaw) {
+        const cur = JSON.parse(activeSessionRaw);
+        const match = combined.find((u) => u.id === cur.id || u.email.toLowerCase() === cur.email?.toLowerCase());
+        if (match) {
+          if (match.isBanned && cur.role !== 'admin') {
+            setUser(null);
+            localStorage.removeItem('unical_hub_current_user');
+          } else if (match.paymentStatus !== cur.paymentStatus || match.isBanned !== cur.isBanned) {
+            const updatedCur = { ...cur, paymentStatus: match.paymentStatus, isBanned: match.isBanned };
             if (updatedCur.email.toLowerCase() === ADMIN_EMAIL) updatedCur.role = 'admin';
             setUser(updatedCur);
             localStorage.setItem('unical_hub_current_user', JSON.stringify(updatedCur));
@@ -191,6 +223,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'No student account found with this email. Please register first.' };
       }
 
+      // Check if student account is banned / suspended
+      if (existing.isBanned && !isTryingAdmin) {
+        return {
+          success: false,
+          error: `Your student account has been suspended by the Course Representative${existing.banReason ? ` (${existing.banReason})` : ''}. Please contact administrator divineinyang636@gmail.com.`
+        };
+      }
+
       // Password check for non-admin students
       if (!isTryingAdmin) {
         const passwords = getPasswordStore();
@@ -200,14 +240,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Enforce role strictly — students can NEVER be admin
+      // Record login activity
+      const loginTime = new Date().toISOString();
       const authedUser: UserProfile = {
         ...existing,
         role: isTryingAdmin ? 'admin' : 'student',
+        lastLoginAt: loginTime,
+        loginCount: (existing.loginCount || 0) + 1,
       };
 
       setUser(authedUser);
       localStorage.setItem('unical_hub_current_user', JSON.stringify(authedUser));
+
+      // Update in registered users list
+      const updatedList = registeredUsers.map((u) => u.email.toLowerCase() === normalizedEmail ? authedUser : u);
+      setRegisteredUsers(updatedList);
+      localStorage.setItem('unical_hub_registered_users', JSON.stringify(updatedList));
+
+      // Record login in central cloud database
+      ApiSync.recordUserLogin(normalizedEmail);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Login failed.' };
@@ -219,6 +270,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setUser(null);
     localStorage.removeItem('unical_hub_current_user');
+  };
+
+  const banUser = async (studentId: string, reason?: string) => {
+    const updated = registeredUsers.map((u) => {
+      if (u.id === studentId && u.role !== 'admin') {
+        return {
+          ...u,
+          isBanned: true,
+          bannedAt: new Date().toISOString(),
+          banReason: reason || 'Suspended by Super Administrator',
+        };
+      }
+      return u;
+    });
+    setRegisteredUsers(updated);
+    localStorage.setItem('unical_hub_registered_users', JSON.stringify(updated));
+
+    // If current session is this student, log them out
+    if (user && user.id === studentId && user.role !== 'admin') {
+      logout();
+    }
+
+    const target = registeredUsers.find((u) => u.id === studentId);
+    await ApiSync.updateUserBanStatus(studentId, true, reason, target?.email);
+  };
+
+  const unbanUser = async (studentId: string) => {
+    const updated = registeredUsers.map((u) => {
+      if (u.id === studentId) {
+        return {
+          ...u,
+          isBanned: false,
+          bannedAt: undefined,
+          banReason: undefined,
+        };
+      }
+      return u;
+    });
+    setRegisteredUsers(updated);
+    localStorage.setItem('unical_hub_registered_users', JSON.stringify(updated));
+
+    const target = registeredUsers.find((u) => u.id === studentId);
+    await ApiSync.updateUserBanStatus(studentId, false, undefined, target?.email);
   };
 
   // ── STEP 1: Send 6-digit registration OTP ─────────────────────────────────
@@ -434,6 +528,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetPasswordWithOtp,
         getOtpInfo,
         updateProfile,
+        banUser,
+        unbanUser,
       }}
     >
       {children}

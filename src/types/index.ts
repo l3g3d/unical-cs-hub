@@ -12,6 +12,11 @@ export interface UserProfile {
   isEmailVerified: boolean;
   paymentStatus: PaymentStatus;
   createdAt: string;
+  lastLoginAt?: string;
+  loginCount?: number;
+  isBanned?: boolean;
+  bannedAt?: string;
+  banReason?: string;
 }
 
 export interface Course {
@@ -75,7 +80,10 @@ export interface Assignment {
 export interface AssignmentSubmission {
   id: string;
   assignmentId: string;
+  courseCode?: string;
+  assignmentTitle?: string;
   studentId: string;
+  studentEmail?: string;
   studentName: string;
   matricNumber: string;
   fileUrl: string;
@@ -84,12 +92,14 @@ export interface AssignmentSubmission {
   remarks?: string;
   submittedAt: string;
   grade?: number;
+  score?: number;
   feedback?: string;
 }
 
 export interface PaymentRecord {
   id: string;
   studentId: string;
+  studentEmail?: string;
   studentName: string;
   matricNumber: string;
   amount: number; // 500
@@ -97,6 +107,7 @@ export interface PaymentRecord {
   bankName: string;
   transactionReference: string;
   proofImageUrl?: string; // Screenshot of payment transfer receipt
+  proofReceiptUrl?: string; // Alias for receipt preview
   status: PaymentStatus;
   rejectionReason?: string;
   approvedBy?: string;
