@@ -51,6 +51,7 @@ interface DataContextType {
   submitPayment: (pay: Omit<PaymentRecord, 'id' | 'status' | 'createdAt'>) => PaymentRecord;
   approvePayment: (id: string) => void;
   rejectPayment: (id: string, reason: string) => void;
+  setUserCourseAccess: (studentId: string, status: 'APPROVED' | 'UNPAID' | 'PENDING' | 'REJECTED') => void;
   // Complaints
   submitComplaint: (comp: Omit<Complaint, 'id' | 'status' | 'createdAt' | 'responses'>) => Complaint;
   replyComplaint: (id: string, text: string) => void;
@@ -98,8 +99,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    // Initial cloud sync
+    MockStore.initCloudSync();
+
+    // Listen for reactive store updates
     const unsubscribe = MockStore.subscribe(syncState);
-    return () => unsubscribe();
+
+    // Periodic background sync every 25 seconds
+    const interval = setInterval(() => {
+      MockStore.initCloudSync();
+    }, 25000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
 
   const unreadNotifsCount = notifications.filter((n) => !n.isRead).length;
@@ -167,6 +181,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const rejectPayment = (id: string, reason: string) => {
     MockStore.rejectPayment(id, reason, adminName);
+  };
+
+  const setUserCourseAccess = (studentId: string, status: 'APPROVED' | 'UNPAID' | 'PENDING' | 'REJECTED') => {
+    MockStore.setUserCourseAccess(studentId, status, adminName);
   };
 
   // Complaints
@@ -251,6 +269,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { success: true, message: `Published announcement: "${details.title}".` };
         }
 
+        case 'UPLOAD_NOTE': {
+          uploadNote({
+            courseCode: details.courseCode || 'COS101',
+            lectureNumber: Number(details.lectureNumber) || 1,
+            topic: details.topic || 'Lecture Note',
+            description: details.description || `Lecture notes for ${details.courseCode}`,
+            fileUrl: details.fileUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+            fileName: details.fileName || `${details.courseCode}_Lecture${details.lectureNumber || 1}.pdf`,
+            fileSize: details.fileSize || '1.2 MB',
+          });
+          return { success: true, message: `Uploaded note for ${details.courseCode}: Lecture ${details.lectureNumber || 1} - "${details.topic}".` };
+        }
+
+        case 'UPDATE_COURSE_REP': {
+          updateCourseRep({
+            ...(details.fullName ? { fullName: details.fullName } : {}),
+            ...(details.phone ? { phone: details.phone } : {}),
+            ...(details.email ? { email: details.email } : {}),
+            ...(details.photoUrl ? { photoUrl: details.photoUrl } : {}),
+          });
+          return { success: true, message: `Updated Course Representative details successfully.` };
+        }
+
         default:
           return { success: false, message: `Action type ${action.type} is not supported.` };
       }
@@ -290,6 +331,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         submitPayment,
         approvePayment,
         rejectPayment,
+        setUserCourseAccess,
         submitComplaint,
         replyComplaint,
         updateComplaintStatus,

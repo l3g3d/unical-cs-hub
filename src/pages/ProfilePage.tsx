@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Save,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 
 export const ProfilePage: React.FC = () => {
@@ -27,6 +29,30 @@ export const ProfilePage: React.FC = () => {
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Please select a valid image file.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('Image file size must be less than 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAvatarUrl(reader.result as string);
+      setAvatarError(null);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,16 +173,44 @@ export const ProfilePage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Avatar Image URL</label>
-              <div className="relative">
-                <Camera className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-royal-500"
-                />
+              <label className="block font-semibold text-slate-700 mb-1">Upload Profile Picture</label>
+              {avatarError && (
+                <div className="mb-2 p-2 rounded-lg bg-rose-50 text-rose-700 text-[11px] flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>{avatarError}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="w-14 h-14 rounded-xl bg-royal-600 flex items-center justify-center text-white font-bold overflow-hidden border border-slate-300 flex-shrink-0 shadow-xs">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <Camera className="w-6 h-6 text-royal-200" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-royal-600 hover:bg-royal-500 text-white font-semibold text-xs shadow-xs transition">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Choose Photo from Device</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarUrl('')}
+                      className="ml-2 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove</span>
+                    </button>
+                  )}
+                  <p className="text-[10px] text-slate-400 mt-1">Select from your phone gallery or computer (JPG, PNG, WEBP)</p>
+                </div>
               </div>
             </div>
 

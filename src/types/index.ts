@@ -96,6 +96,7 @@ export interface PaymentRecord {
   senderName: string;
   bankName: string;
   transactionReference: string;
+  proofImageUrl?: string; // Screenshot of payment transfer receipt
   status: PaymentStatus;
   rejectionReason?: string;
   approvedBy?: string;
@@ -185,7 +186,9 @@ export interface AiProposedAction {
     | 'CHANGE_VENUE'
     | 'CREATE_ASSIGNMENT'
     | 'CREATE_EVENT'
-    | 'PUBLISH_ANNOUNCEMENT';
+    | 'PUBLISH_ANNOUNCEMENT'
+    | 'UPLOAD_NOTE'
+    | 'UPDATE_COURSE_REP';
   summary: string;
   details: Record<string, any>;
   status: 'PENDING' | 'EXECUTED' | 'CANCELLED';

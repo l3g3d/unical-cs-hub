@@ -1,7 +1,19 @@
 // Google Gemini API Integration for UNICAL CS HUB AI Admin Assistant
 import { AiProposedAction } from '../types';
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+export function getGeminiApiKey(): string {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('unical_hub_gemini_key');
+    if (custom && custom.trim()) return custom.trim();
+  }
+  return import.meta.env.VITE_GEMINI_API_KEY || '';
+}
+
+export function saveGeminiApiKey(key: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('unical_hub_gemini_key', key.trim());
+  }
+}
 
 export interface ChatMessage {
   id: string;
@@ -51,12 +63,14 @@ Available Action Types:
 - CREATE_ASSIGNMENT
 - CREATE_EVENT
 - PUBLISH_ANNOUNCEMENT
+- UPLOAD_NOTE
+- UPDATE_COURSE_REP
 
 Respond in this exact JSON structure when an action is detected:
 {
   "message": "Conversational reply explaining what you have prepared...",
   "action": {
-    "type": "ADD_TIMETABLE_CLASS" | "CHANGE_VENUE" | "CREATE_ASSIGNMENT" | "CREATE_EVENT" | "PUBLISH_ANNOUNCEMENT",
+    "type": "ADD_TIMETABLE_CLASS" | "CHANGE_VENUE" | "CREATE_ASSIGNMENT" | "CREATE_EVENT" | "PUBLISH_ANNOUNCEMENT" | "UPLOAD_NOTE" | "UPDATE_COURSE_REP",
     "summary": "Brief 1-sentence description of the action",
     "details": { ...relevant fields... }
   }
@@ -224,6 +238,71 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
     };
   }
 
+  // Detect Lecture Note upload
+  if (lower.includes('note') && (lower.includes('upload') || lower.includes('add') || lower.includes('post') || lower.includes('create'))) {
+    let courseCode = 'COS101';
+    if (lower.includes('csc181')) courseCode = 'CSC181';
+    else if (lower.includes('gst111')) courseCode = 'GST111';
+    else if (lower.includes('mth101')) courseCode = 'MTH101';
+    else if (lower.includes('phy101')) courseCode = 'PHY101';
+    else if (lower.includes('phy107')) courseCode = 'PHY107';
+    else if (lower.includes('sta111')) courseCode = 'STA111';
+
+    let lectureNumber = 3;
+    const lecMatch = lower.match(/lecture\s*(\d+)/i) || lower.match(/lec\s*(\d+)/i);
+    if (lecMatch && lecMatch[1]) {
+      lectureNumber = parseInt(lecMatch[1], 10);
+    }
+
+    const topic = lower.includes('binary')
+      ? 'Binary Arithmetic and Boolean Logic'
+      : lower.includes('matrix') || lower.includes('matrices')
+      ? 'Matrix Operations and Linear Systems'
+      : lower.includes('grammar') || lower.includes('concord')
+      ? 'Grammatical Concord and Sentence Construction'
+      : `Lecture ${lectureNumber} Core Concepts`;
+
+    return {
+      message: `I have prepared a new course note entry for ${courseCode} (Lecture ${lectureNumber}: "${topic}"). Please review and confirm upload below.`,
+      action: {
+        id: 'act-' + Date.now(),
+        type: 'UPLOAD_NOTE',
+        summary: `Upload Note for ${courseCode}: Lecture ${lectureNumber} - ${topic}`,
+        details: {
+          courseCode,
+          lectureNumber,
+          topic,
+          description: `Comprehensive lecture notes covering ${topic}.`,
+          fileName: `${courseCode}_Lecture${lectureNumber}_${topic.replace(/\s+/g, '_')}.pdf`,
+          fileSize: '1.4 MB',
+          fileUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'
+        },
+        status: 'PENDING'
+      }
+    };
+  }
+
+  // Detect Course Rep info update
+  if (lower.includes('course rep') || lower.includes('representative') || (lower.includes('rep') && (lower.includes('phone') || lower.includes('email') || lower.includes('contact')))) {
+    const phoneMatch = input.match(/0\d{10}/);
+    const emailMatch = input.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+
+    return {
+      message: `I have formulated an update for the official Course Representative card. Please review the details below.`,
+      action: {
+        id: 'act-' + Date.now(),
+        type: 'UPDATE_COURSE_REP',
+        summary: `Update Course Representative official profile information`,
+        details: {
+          fullName: 'Divine Christopher Inyang',
+          phone: phoneMatch ? phoneMatch[0] : '08139651907',
+          email: emailMatch ? emailMatch[0] : 'divineinyang636@gmail.com',
+        },
+        status: 'PENDING'
+      }
+    };
+  }
+
   // Conversational response
   if (lower.includes('organise') || lower.includes('organize') || lower.includes('timetable')) {
     return {
@@ -243,8 +322,10 @@ export async function askGeminiAssistant(
   history: ChatMessage[] = []
 ): Promise<{ message: string; action: AiProposedAction | null }> {
   try {
+    const activeKey = getGeminiApiKey();
+
     // If no key or mock key, use rule-based extractor
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('your-key')) {
+    if (!activeKey || activeKey.includes('your-key')) {
       return fallbackRuleExtractor(prompt);
     }
 
@@ -255,7 +336,7 @@ export async function askGeminiAssistant(
     }));
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${activeKey}`,
       {
         method: 'POST',
         headers: {

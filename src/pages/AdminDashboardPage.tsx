@@ -4,6 +4,7 @@ import { useData } from '../context/DataContext';
 import { CourseRepCard } from '../components/common/CourseRepCard';
 import { PaymentStatusBadge } from '../components/common/PaymentStatusBadge';
 import { EmailService, EmailLogEntry } from '../lib/emailService';
+import { getGeminiApiKey, saveGeminiApiKey } from '../lib/gemini';
 import {
   Shield,
   CreditCard,
@@ -29,6 +30,10 @@ import {
   Mail,
   Send,
   KeyRound,
+  Eye,
+  Image as ImageIcon,
+  Camera,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface Props {
@@ -55,6 +60,7 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
     payments,
     approvePayment,
     rejectPayment,
+    setUserCourseAccess,
     complaints,
     replyComplaint,
     updateComplaintStatus,
@@ -64,6 +70,16 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
   const [activeAdminTab, setActiveAdminTab] = useState<
     'overview' | 'payments' | 'notes' | 'timetable' | 'assignments' | 'students' | 'complaints' | 'rep' | 'audit' | 'email'
   >('overview');
+
+  // Viewing full-size transfer proof receipt modal
+  const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
+
+  // Gemini API Key state
+  const [geminiKeyInput, setGeminiKeyInput] = useState(getGeminiApiKey());
+  const [geminiKeySaved, setGeminiKeySaved] = useState(false);
+
+  // Course Rep Photo upload error
+  const [repPhotoFileError, setRepPhotoFileError] = useState<string | null>(null);
 
   // Email & OTP Dispatcher state
   const [emailConfig, setEmailConfig] = useState(EmailService.getConfig());
@@ -161,6 +177,35 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
     setAssignInstructions('');
     setAssignDueDate('');
     setTimeout(() => setAssignSuccess(false), 3000);
+  };
+
+  const handleRepPhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setRepPhotoFileError('Please select a valid image file (PNG, JPG, WEBP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setRepPhotoFileError('Image file size must be less than 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setRepPhoto(reader.result as string);
+      setRepPhotoFileError(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveGeminiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveGeminiApiKey(geminiKeyInput.trim());
+    setGeminiKeySaved(true);
+    setTimeout(() => setGeminiKeySaved(false), 3000);
   };
 
   const handleSaveCourseRep = (e: React.FormEvent) => {
@@ -465,6 +510,7 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                     <th className="py-3 px-4">Sender Name</th>
                     <th className="py-3 px-4">Bank</th>
                     <th className="py-3 px-4">OPay Ref / Session ID</th>
+                    <th className="py-3 px-4">Proof Receipt</th>
                     <th className="py-3 px-4">Amount</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Action</th>
@@ -473,7 +519,7 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                 <tbody className="divide-y divide-slate-100">
                   {filteredPayments.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-slate-400">
+                      <td colSpan={9} className="py-8 text-center text-slate-400">
                         No payments found for filter "{paymentFilter}".
                       </td>
                     </tr>
@@ -486,6 +532,20 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                         <td className="py-3 px-4 font-medium text-slate-800">{p.bankName}</td>
                         <td className="py-3 px-4 font-mono font-bold text-royal-700 select-all">
                           {p.transactionReference}
+                        </td>
+                        <td className="py-3 px-4">
+                          {p.proofImageUrl ? (
+                            <button
+                              type="button"
+                              onClick={() => setViewingReceiptUrl(p.proofImageUrl!)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-royal-50 hover:bg-royal-100 text-royal-700 font-semibold text-xs border border-royal-200 transition shadow-2xs"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-royal-600" />
+                              <span>View Receipt</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 text-[11px] italic">No image</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 font-black text-navy-950">₦{p.amount}</td>
                         <td className="py-3 px-4">
@@ -915,11 +975,12 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                   <th className="py-3 px-3">Role</th>
                   <th className="py-3 px-3">Payment Status</th>
                   <th className="py-3 px-3">Registered Date</th>
+                  <th className="py-3 px-3 text-right">Access Control</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredStudents.map((st) => (
-                  <tr key={st.id}>
+                  <tr key={st.id} className="hover:bg-slate-50 transition">
                     <td className="py-3 px-3 font-bold text-slate-900">{st.fullName}</td>
                     <td className="py-3 px-3 font-mono text-slate-600">{st.matricNumber}</td>
                     <td className="py-3 px-3 text-slate-700">{st.email}</td>
@@ -929,6 +990,37 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                     </td>
                     <td className="py-3 px-3 text-slate-400">
                       {new Date(st.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="py-3 px-3 text-right space-x-1.5 whitespace-nowrap">
+                      {st.role === 'admin' ? (
+                        <span className="text-[10px] font-bold text-royal-700 bg-royal-50 px-2.5 py-1 rounded-full border border-royal-200">
+                          Super Administrator
+                        </span>
+                      ) : (
+                        <>
+                          {st.paymentStatus !== 'APPROVED' ? (
+                            <button
+                              type="button"
+                              onClick={() => setUserCourseAccess(st.id, 'APPROVED')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs transition"
+                              title="Unlock all course notes for this student"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>Grant Access</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setUserCourseAccess(st.id, 'UNPAID')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-semibold text-[11px] transition"
+                              title="Lock course notes for this student"
+                            >
+                              <X className="w-3 h-3" />
+                              <span>Revoke Access</span>
+                            </button>
+                          )}
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1017,14 +1109,37 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Photograph Image URL</label>
-                <input
-                  type="url"
-                  value={repPhoto}
-                  onChange={(e) => setRepPhoto(e.target.value)}
-                  required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs"
-                />
+                <label className="block font-semibold text-slate-700 mb-1">Course Representative Photograph</label>
+                {repPhotoFileError && (
+                  <div className="mb-2 p-2 rounded-lg bg-rose-50 text-rose-700 text-[11px] flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{repPhotoFileError}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div className="w-14 h-14 rounded-xl bg-royal-600 overflow-hidden border border-slate-300 flex-shrink-0 shadow-xs">
+                    {repPhoto ? (
+                      <img src={repPhoto} alt="Rep Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white">
+                        <Camera className="w-6 h-6" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-royal-600 hover:bg-royal-500 text-white font-semibold text-xs shadow-xs transition">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Official Photo from Device</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleRepPhotoFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1">Upload from your phone camera or computer storage (JPG, PNG, WEBP)</p>
+                  </div>
+                </div>
               </div>
 
               <button
@@ -1295,6 +1410,70 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
               </div>
             </div>
           </div>
+
+          {/* Gemini AI Assistant Configuration */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-card space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-royal-600 text-white flex items-center justify-center shadow-xs">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-navy-950 flex items-center gap-2">
+                    <span>Google Gemini AI Assistant Engine</span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      Connected
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Powers conversational uploads, timetable creation, and intelligent site configuration for the Admin.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onOpenAi}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-royal-600 to-indigo-600 hover:from-royal-500 hover:to-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition"
+              >
+                <Bot className="w-4 h-4" />
+                <span>Launch Assistant Window</span>
+              </button>
+            </div>
+
+            {geminiKeySaved && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>Gemini API Key saved and active for your admin session!</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveGeminiKey} className="space-y-3 pt-2">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1 text-xs">
+                  Active Gemini API Key
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="password"
+                    value={geminiKeyInput}
+                    onChange={(e) => setGeminiKeyInput(e.target.value)}
+                    placeholder="Enter or paste your Google Gemini API key..."
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-royal-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-bold text-xs shadow-xs transition whitespace-nowrap"
+                  >
+                    Save API Key
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Connected to Google Generative AI (Gemini 1.5 Flash). Enables hands-free note uploads, schedule changes, and portal controls.
+                </p>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1322,6 +1501,46 @@ export const AdminDashboardPage: React.FC<Props> = ({ onOpenAi }) => {
                 className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold"
               >
                 Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Transfer Proof Lightbox Modal */}
+      {viewingReceiptUrl && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-fade-in border border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-royal-600" />
+                <h3 className="text-xs font-bold text-navy-950 uppercase tracking-wider">
+                  Student Transfer Receipt Screenshot
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingReceiptUrl(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-slate-900 flex items-center justify-center max-h-[70vh] overflow-auto">
+              <img
+                src={viewingReceiptUrl}
+                alt="Student Transfer Proof"
+                className="max-w-full max-h-[65vh] object-contain rounded-lg shadow-md"
+              />
+            </div>
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+              <span className="text-[11px] text-slate-500">
+                Confirm amount (₦500) and reference match OPay credit alert.
+              </span>
+              <button
+                onClick={() => setViewingReceiptUrl(null)}
+                className="px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white font-semibold text-xs rounded-xl transition"
+              >
+                Close Receipt
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AiProposedAction } from '../../types';
-import { Check, X, Calendar, MapPin, FileEdit, Bell, Loader2 } from 'lucide-react';
+import { Check, X, Calendar, MapPin, FileEdit, Bell, Loader2, BookOpen, Award } from 'lucide-react';
 
 interface Props {
   action: AiProposedAction;
@@ -21,6 +21,10 @@ export const ActionPreviewCard: React.FC<Props> = ({ action, onConfirm, onCancel
         return <MapPin className="w-4 h-4 text-emerald-600" />;
       case 'CREATE_ASSIGNMENT':
         return <FileEdit className="w-4 h-4 text-purple-600" />;
+      case 'UPLOAD_NOTE':
+        return <BookOpen className="w-4 h-4 text-royal-600" />;
+      case 'UPDATE_COURSE_REP':
+        return <Award className="w-4 h-4 text-amber-600" />;
       case 'PUBLISH_ANNOUNCEMENT':
       case 'CREATE_EVENT':
       default:

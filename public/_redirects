@@ -1,3 +1,4 @@
 /api/send-email  /.netlify/functions/send-email  200!
-/api/*  /.netlify/functions/:splat  200!
-/*  /index.html  200
+/api/hub-sync    /.netlify/functions/hub-sync    200!
+/api/*           /.netlify/functions/:splat      200!
+/*               /index.html                     200

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, PaymentStatus, UserRole } from '../types';
 import { EmailService } from '../lib/emailService';
+import { ApiSync } from '../lib/apiSync';
 
 // ============================================================
 // IMPORTANT: We deliberately do NOT import or use Supabase Auth
@@ -85,10 +86,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('unical_hub_passwords', JSON.stringify(store));
   };
 
+  const sanitizeUsers = (list: UserProfile[]): UserProfile[] => {
+    if (!Array.isArray(list)) return DEFAULT_USERS;
+    return list.filter((u) => {
+      if (!u || !u.email) return false;
+      const em = u.email.trim().toLowerCase();
+      if (
+        em === 'emeka@example.com' ||
+        em === 'blessing@example.com' ||
+        u.id === 'student-emeka' ||
+        u.id === 'student-blessing'
+      ) {
+        return false;
+      }
+      return true;
+    });
+  };
+
+  const syncRemoteUsers = async () => {
+    try {
+      const hub = await ApiSync.fetchHubState();
+      if (hub && Array.isArray(hub.users)) {
+        const mergedUsers = [...hub.users];
+        if (!mergedUsers.some((u: UserProfile) => u.email.toLowerCase() === ADMIN_EMAIL)) {
+          mergedUsers.unshift(DEFAULT_USERS[0]);
+        }
+        const sanitized = sanitizeUsers(mergedUsers);
+        setRegisteredUsers(sanitized);
+        localStorage.setItem('unical_hub_registered_users', JSON.stringify(sanitized));
+
+        // Update active session if payment status changed remotely
+        const activeSessionRaw = localStorage.getItem('unical_hub_current_user');
+        if (activeSessionRaw) {
+          const cur = JSON.parse(activeSessionRaw);
+          const match = sanitized.find((u) => u.id === cur.id || u.email.toLowerCase() === cur.email?.toLowerCase());
+          if (match && match.paymentStatus !== cur.paymentStatus) {
+            const updatedCur = { ...cur, paymentStatus: match.paymentStatus };
+            if (updatedCur.email.toLowerCase() === ADMIN_EMAIL) updatedCur.role = 'admin';
+            setUser(updatedCur);
+            localStorage.setItem('unical_hub_current_user', JSON.stringify(updatedCur));
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Sync remote users notice:', err);
+    }
+  };
+
   useEffect(() => {
     try {
       const storedUsersRaw = localStorage.getItem('unical_hub_registered_users');
       let usersList: UserProfile[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+      usersList = sanitizeUsers(usersList);
       if (usersList.length === 0) {
         usersList = DEFAULT_USERS;
         localStorage.setItem('unical_hub_registered_users', JSON.stringify(DEFAULT_USERS));
@@ -114,6 +163,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
+
+    // Trigger cloud user sync
+    syncRemoteUsers();
+
+    // Background user synchronization every 25 seconds
+    const interval = setInterval(syncRemoteUsers, 25000);
+    return () => clearInterval(interval);
   }, []);
 
   // ── LOGIN (email + password, fully custom — no Supabase Auth) ──────────────
@@ -262,6 +318,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('unical_hub_registered_users', JSON.stringify(updated));
     savePassword(normalizedEmail, password);
 
+    // Sync newly registered student to central database immediately
+    ApiSync.registerUserRemotely(newUser);
+
     // Log the student in immediately
     setUser(newUser);
     localStorage.setItem('unical_hub_current_user', JSON.stringify(newUser));
@@ -353,6 +412,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const all = registeredUsers.map((u) => (u.id === user.id ? updated : u));
     setRegisteredUsers(all);
     localStorage.setItem('unical_hub_registered_users', JSON.stringify(all));
+
+    // Sync profile updates (such as uploaded avatar) to cloud
+    ApiSync.registerUserRemotely(updated);
   };
 
   const isAdmin = isAdminUser(user);

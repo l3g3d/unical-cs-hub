@@ -14,6 +14,11 @@ import {
   ShieldCheck,
   Building2,
   Lock,
+  Upload,
+  Image as ImageIcon,
+  Eye,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 interface Props {
@@ -27,6 +32,8 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
   const [senderName, setSenderName] = useState(user?.fullName || '');
   const [bankName, setBankName] = useState('OPay');
   const [transactionRef, setTransactionRef] = useState('');
+  const [proofImageBase64, setProofImageBase64] = useState<string | null>(null);
+  const [viewingProofUrl, setViewingProofUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successBanner, setSuccessBanner] = useState(false);
@@ -42,6 +49,28 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
     navigator.clipboard.writeText('08139651907');
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleProofFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorBanner('Please select an image file (PNG, JPG, JPEG, WEBP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorBanner('Image file size should be less than 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProofImageBase64(reader.result as string);
+      setErrorBanner(null);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmitPayment = (e: React.FormEvent) => {
@@ -74,6 +103,7 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
         senderName: senderName.trim(),
         bankName: bankName.trim(),
         transactionReference: transactionRef.trim(),
+        proofImageUrl: proofImageBase64 || undefined,
       });
 
       // Update current user state to PENDING
@@ -82,6 +112,7 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
       setIsSubmitting(false);
       setSuccessBanner(true);
       setTransactionRef('');
+      setProofImageBase64(null);
     }, 500);
   };
 
@@ -303,6 +334,68 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
               </p>
             </div>
 
+            {/* Proof of Payment Screenshot Upload */}
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Upload Proof of Payment Screenshot (Transfer Receipt)
+              </label>
+              <div className="border-2 border-dashed border-slate-300 hover:border-royal-400 rounded-xl p-4 bg-slate-50/70 transition">
+                {proofImageBase64 ? (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={proofImageBase64}
+                        alt="Proof Preview"
+                        className="w-16 h-16 rounded-xl object-cover border border-slate-300 shadow-xs cursor-pointer"
+                        onClick={() => setViewingProofUrl(proofImageBase64)}
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Receipt Screenshot Attached</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Click to view full image</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setViewingProofUrl(proofImageBase64)}
+                        className="px-3 py-1.5 rounded-lg bg-royal-100 hover:bg-royal-200 text-royal-700 font-semibold text-xs flex items-center gap-1 transition"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProofImageBase64(null)}
+                        className="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-semibold text-xs flex items-center gap-1 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer flex flex-col items-center justify-center gap-2 py-3">
+                    <div className="w-10 h-10 rounded-xl bg-royal-100 text-royal-600 flex items-center justify-center">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div className="text-center">
+                      <span className="font-bold text-royal-700 hover:underline">Choose image</span> or drag screenshot here
+                      <p className="text-[11px] text-slate-400 mt-0.5">PNG, JPG, or WEBP up to 5MB</p>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProofFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
             <div className="pt-2">
               <button
                 type="submit"
@@ -329,6 +422,7 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
                   <th className="py-2.5 px-3">Bank</th>
                   <th className="py-2.5 px-3">Sender</th>
                   <th className="py-2.5 px-3">Reference</th>
+                  <th className="py-2.5 px-3">Receipt</th>
                   <th className="py-2.5 px-3">Amount</th>
                   <th className="py-2.5 px-3">Status</th>
                 </tr>
@@ -342,6 +436,20 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
                     <td className="py-2.5 px-3 font-medium text-slate-800">{p.bankName}</td>
                     <td className="py-2.5 px-3 text-slate-700">{p.senderName}</td>
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">{p.transactionReference}</td>
+                    <td className="py-2.5 px-3">
+                      {p.proofImageUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => setViewingProofUrl(p.proofImageUrl!)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-royal-50 hover:bg-royal-100 text-royal-700 font-semibold text-[11px] border border-royal-200 transition"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>View Receipt</span>
+                        </button>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">None</span>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 font-bold text-navy-950">₦{p.amount}</td>
                     <td className="py-2.5 px-3">
                       <PaymentStatusBadge status={p.status} size="sm" />
@@ -350,6 +458,43 @@ export const PaymentPage: React.FC<Props> = ({ onNavigateToNotes }) => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Proof of Payment Lightbox Modal */}
+      {viewingProofUrl && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-fade-in border border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-royal-600" />
+                <h3 className="text-xs font-bold text-navy-950 uppercase tracking-wider">
+                  Transfer Receipt Screenshot
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingProofUrl(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-slate-900 flex items-center justify-center max-h-[70vh] overflow-auto">
+              <img
+                src={viewingProofUrl}
+                alt="Full Transfer Proof"
+                className="max-w-full max-h-[65vh] object-contain rounded-lg shadow-md"
+              />
+            </div>
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setViewingProofUrl(null)}
+                className="px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white font-semibold text-xs rounded-xl transition"
+              >
+                Close Receipt
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -13,9 +13,9 @@ interface Props {
 
 const SAMPLE_COMMANDS = [
   'Add COS101 lecture for Monday at 10 AM in Science Lecture Theatre',
+  'Upload note for COS101 Lecture 3 on Binary Arithmetic',
   'Create a STA111 assignment on Measures of Dispersion due Friday',
-  'Change tomorrow\'s COS101 lecture venue to Computing Lecture Hall',
-  'Let\'s organise next week\'s timetable'
+  'Change tomorrow\'s COS101 lecture venue to Computing Lecture Hall'
 ];
 
 export const AiAssistantModal: React.FC<Props> = ({ isOpen, onClose }) => {

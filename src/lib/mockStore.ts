@@ -17,6 +17,7 @@ import {
   AppNotification,
   AiProposedAction,
 } from '../types';
+import { ApiSync } from './apiSync';
 
 const INITIAL_COURSES: Course[] = [
   {
@@ -366,49 +367,9 @@ const INITIAL_ANNOUNCEMENTS: Announcement[] = [
   }
 ];
 
-const INITIAL_PAYMENTS: PaymentRecord[] = [
-  {
-    id: 'pay-01',
-    studentId: 'student-emeka',
-    studentName: 'Emeka Christian Okon',
-    matricNumber: '23/095144001',
-    amount: 500,
-    senderName: 'Emeka Okon',
-    bankName: 'Kuda Bank',
-    transactionReference: 'OPAY_TRX_98234112',
-    status: 'APPROVED',
-    approvedBy: 'Divine Christopher Inyang',
-    approvedAt: '2026-11-19T16:20:00Z',
-    createdAt: '2026-11-19T15:45:00Z'
-  },
-  {
-    id: 'pay-02',
-    studentId: 'student-blessing',
-    studentName: 'Blessing Effiong Bassey',
-    matricNumber: '23/095144015',
-    amount: 500,
-    senderName: 'Blessing Bassey',
-    bankName: 'Access Bank',
-    transactionReference: 'TRX_ACC_88492019',
-    status: 'PENDING',
-    createdAt: '2026-11-20T20:10:00Z'
-  }
-];
+const INITIAL_PAYMENTS: PaymentRecord[] = [];
 
-const INITIAL_COMPLAINTS: Complaint[] = [
-  {
-    id: 'comp-1',
-    studentId: 'student-blessing',
-    studentName: 'Blessing Effiong Bassey',
-    matricNumber: '23/095144015',
-    subject: 'Transferred ₦500 but notes still showing locked',
-    category: 'Payment problems',
-    message: 'Hello Course Rep, I sent ₦500 to the OPay account 08139651907 yesterday and submitted the transaction reference TRX_ACC_88492019. Please kindly approve my account so I can download the COS101 notes for tomorrow\'s class. Thank you!',
-    status: 'OPEN',
-    createdAt: '2026-11-20T20:15:00Z',
-    responses: []
-  }
-];
+const INITIAL_COMPLAINTS: Complaint[] = [];
 
 const INITIAL_AUDIT_LOGS: AuditLog[] = [
   {
@@ -417,15 +378,35 @@ const INITIAL_AUDIT_LOGS: AuditLog[] = [
     action: 'PORTAL_INITIALIZATION',
     details: 'Initialized UNICAL CS HUB portal with 7 initial 100L courses and official timetable.',
     timestamp: '2026-11-15T08:00:00Z'
-  },
-  {
-    id: 'log-2',
-    adminName: 'Divine Christopher Inyang',
-    action: 'PAYMENT_APPROVED',
-    details: 'Approved ₦500 access payment for Emeka Christian Okon (23/095144001).',
-    timestamp: '2026-11-19T16:20:00Z'
   }
 ];
+
+// Sanitizers to eliminate fake / mock demo accounts
+const sanitizePayments = (list: PaymentRecord[]): PaymentRecord[] => {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (p) =>
+      p &&
+      p.studentId !== 'student-emeka' &&
+      p.studentId !== 'student-blessing' &&
+      p.id !== 'pay-01' &&
+      p.id !== 'pay-02'
+  );
+};
+
+const sanitizeComplaints = (list: Complaint[]): Complaint[] => {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (c) => c && c.id !== 'comp-1' && c.studentId !== 'student-blessing'
+  );
+};
+
+const sanitizeAuditLogs = (list: AuditLog[]): AuditLog[] => {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (l) => l && !l.details.includes('Emeka Christian Okon') && !l.details.includes('Blessing Effiong Bassey')
+  );
+};
 
 // Helper to get or set localStorage
 function getLocal<T>(key: string, defaultVal: T): T {
@@ -456,10 +437,10 @@ export class MockStore {
   private static venues: LectureVenue[] = getLocal('venues', INITIAL_VENUES);
   private static assignments: Assignment[] = getLocal('assignments', INITIAL_ASSIGNMENTS);
   private static submissions: AssignmentSubmission[] = getLocal('submissions', []);
-  private static payments: PaymentRecord[] = getLocal('payments', INITIAL_PAYMENTS);
-  private static complaints: Complaint[] = getLocal('complaints', INITIAL_COMPLAINTS);
+  private static payments: PaymentRecord[] = sanitizePayments(getLocal('payments', INITIAL_PAYMENTS));
+  private static complaints: Complaint[] = sanitizeComplaints(getLocal('complaints', INITIAL_COMPLAINTS));
   private static announcements: Announcement[] = getLocal('announcements', INITIAL_ANNOUNCEMENTS);
-  private static auditLogs: AuditLog[] = getLocal('auditLogs', INITIAL_AUDIT_LOGS);
+  private static auditLogs: AuditLog[] = sanitizeAuditLogs(getLocal('auditLogs', INITIAL_AUDIT_LOGS));
   private static notifications: AppNotification[] = getLocal('notifications', [
     {
       id: 'notif-1',
@@ -484,6 +465,67 @@ export class MockStore {
 
   private static notify() {
     this.listeners.forEach((fn) => fn());
+  }
+
+  // --- Central Cloud Synchronization Engine ---
+  static async initCloudSync() {
+    try {
+      const remote = await ApiSync.fetchHubState();
+      if (!remote || typeof remote !== 'object') return;
+
+      let changed = false;
+      if (Array.isArray(remote.notes) && remote.notes.length > 0) {
+        this.notes = remote.notes;
+        setLocal('notes', this.notes);
+        changed = true;
+      }
+      if (Array.isArray(remote.timetable) && remote.timetable.length > 0) {
+        this.timetable = remote.timetable;
+        setLocal('timetable', this.timetable);
+        changed = true;
+      }
+      if (Array.isArray(remote.venues) && remote.venues.length > 0) {
+        this.venues = remote.venues;
+        setLocal('venues', this.venues);
+        changed = true;
+      }
+      if (Array.isArray(remote.assignments) && remote.assignments.length > 0) {
+        this.assignments = remote.assignments;
+        setLocal('assignments', this.assignments);
+        changed = true;
+      }
+      if (Array.isArray(remote.submissions)) {
+        this.submissions = remote.submissions;
+        setLocal('submissions', this.submissions);
+        changed = true;
+      }
+      if (Array.isArray(remote.payments)) {
+        this.payments = sanitizePayments(remote.payments);
+        setLocal('payments', this.payments);
+        changed = true;
+      }
+      if (Array.isArray(remote.complaints)) {
+        this.complaints = sanitizeComplaints(remote.complaints);
+        setLocal('complaints', this.complaints);
+        changed = true;
+      }
+      if (Array.isArray(remote.announcements) && remote.announcements.length > 0) {
+        this.announcements = remote.announcements;
+        setLocal('announcements', this.announcements);
+        changed = true;
+      }
+      if (remote.courseRep && remote.courseRep.fullName) {
+        this.courseRep = remote.courseRep;
+        setLocal('courseRep', this.courseRep);
+        changed = true;
+      }
+
+      if (changed) {
+        this.notify();
+      }
+    } catch (err) {
+      console.warn('[MockStore] Cloud sync notice:', err);
+    }
   }
 
   // --- Getters ---
@@ -539,6 +581,7 @@ export class MockStore {
   static updateCourseRep(updates: Partial<CourseRepresentative>, adminName: string) {
     this.courseRep = { ...this.courseRep, ...updates, updatedAt: new Date().toISOString() };
     setLocal('courseRep', this.courseRep);
+    ApiSync.syncKeyRemotely('courseRep', this.courseRep);
     this.logAction(adminName, 'UPDATE_COURSE_REP', `Updated course representative details.`);
     this.notify();
   }
@@ -552,6 +595,7 @@ export class MockStore {
     };
     this.notes = [newNote, ...this.notes];
     setLocal('notes', this.notes);
+    ApiSync.syncKeyRemotely('notes', this.notes);
     this.logAction(adminName, 'UPLOAD_NOTE', `Uploaded note for ${note.courseCode}: Lecture ${note.lectureNumber} - ${note.topic}`);
     this.broadcastNotification({
       title: `New Note: ${note.courseCode}`,
@@ -567,6 +611,7 @@ export class MockStore {
     const note = this.notes.find((n) => n.id === id);
     this.notes = this.notes.filter((n) => n.id !== id);
     setLocal('notes', this.notes);
+    ApiSync.syncKeyRemotely('notes', this.notes);
     if (note) {
       this.logAction(adminName, 'DELETE_NOTE', `Deleted note ${note.courseCode}: Lecture ${note.lectureNumber}`);
     }
@@ -580,6 +625,7 @@ export class MockStore {
     };
     this.timetable = [...this.timetable, newEntry];
     setLocal('timetable', this.timetable);
+    ApiSync.syncKeyRemotely('timetable', this.timetable);
     this.logAction(adminName, 'ADD_TIMETABLE_CLASS', `Added ${entry.courseCode} on ${entry.dayOfWeek} at ${entry.startTime} (${entry.venue})`);
     this.broadcastNotification({
       title: `Timetable Updated: ${entry.courseCode}`,
@@ -594,6 +640,7 @@ export class MockStore {
   static editTimetableEntry(id: string, updates: Partial<TimetableEntry>, adminName: string) {
     this.timetable = this.timetable.map((tt) => (tt.id === id ? { ...tt, ...updates } : tt));
     setLocal('timetable', this.timetable);
+    ApiSync.syncKeyRemotely('timetable', this.timetable);
     this.logAction(adminName, 'EDIT_TIMETABLE_CLASS', `Edited timetable entry id: ${id}`);
     this.notify();
   }
@@ -601,6 +648,7 @@ export class MockStore {
   static deleteTimetableEntry(id: string, adminName: string) {
     this.timetable = this.timetable.filter((tt) => tt.id !== id);
     setLocal('timetable', this.timetable);
+    ApiSync.syncKeyRemotely('timetable', this.timetable);
     this.logAction(adminName, 'DELETE_TIMETABLE_CLASS', `Deleted timetable class id: ${id}`);
     this.notify();
   }
@@ -633,6 +681,7 @@ export class MockStore {
     }
 
     setLocal('venues', this.venues);
+    ApiSync.syncKeyRemotely('venues', this.venues);
     this.logAction(adminName, 'UPDATE_VENUE', `Changed venue for ${courseCode} to ${venueName}`);
     this.broadcastNotification({
       title: `Venue Alert: ${courseCode}`,
@@ -651,6 +700,7 @@ export class MockStore {
     };
     this.assignments = [newAssign, ...this.assignments];
     setLocal('assignments', this.assignments);
+    ApiSync.syncKeyRemotely('assignments', this.assignments);
     this.logAction(adminName, 'CREATE_ASSIGNMENT', `Created assignment for ${assign.courseCode}: "${assign.title}"`);
     this.broadcastNotification({
       title: `New Assignment: ${assign.courseCode}`,
@@ -665,6 +715,7 @@ export class MockStore {
   static deleteAssignment(id: string, adminName: string) {
     this.assignments = this.assignments.filter((a) => a.id !== id);
     setLocal('assignments', this.assignments);
+    ApiSync.syncKeyRemotely('assignments', this.assignments);
     this.logAction(adminName, 'DELETE_ASSIGNMENT', `Deleted assignment id ${id}`);
     this.notify();
   }
@@ -681,6 +732,7 @@ export class MockStore {
       ...this.submissions.filter((s) => !(s.assignmentId === submission.assignmentId && s.studentId === submission.studentId))
     ];
     setLocal('submissions', this.submissions);
+    ApiSync.syncKeyRemotely('submissions', this.submissions);
     this.notify();
     return newSub;
   }
@@ -688,6 +740,7 @@ export class MockStore {
   static gradeSubmission(id: string, grade: number, feedback: string, adminName: string) {
     this.submissions = this.submissions.map((s) => (s.id === id ? { ...s, grade, feedback } : s));
     setLocal('submissions', this.submissions);
+    ApiSync.syncKeyRemotely('submissions', this.submissions);
     this.logAction(adminName, 'GRADE_SUBMISSION', `Graded submission id ${id} with score ${grade}`);
     this.notify();
   }
@@ -702,6 +755,7 @@ export class MockStore {
     };
     this.payments = [newPay, ...this.payments];
     setLocal('payments', this.payments);
+    ApiSync.submitPaymentRemotely(newPay);
     this.notify();
     return newPay;
   }
@@ -723,9 +777,16 @@ export class MockStore {
 
     if (approvedRecord) {
       setLocal('payments', this.payments);
-      this.logAction(adminName, 'APPROVE_PAYMENT', `Approved ₦500 payment for ${(approvedRecord as PaymentRecord).studentName} (${(approvedRecord as PaymentRecord).matricNumber})`);
+      const rec = approvedRecord as PaymentRecord;
+      ApiSync.updatePaymentStatusRemotely({
+        id: paymentId,
+        status: 'APPROVED',
+        approvedBy: adminName,
+        studentId: rec.studentId
+      });
+      this.logAction(adminName, 'APPROVE_PAYMENT', `Approved ₦500 payment for ${rec.studentName} (${rec.matricNumber})`);
       // Update registered profile in localStorage
-      this.updateStudentPaymentStatus((approvedRecord as PaymentRecord).studentId, 'APPROVED');
+      this.updateStudentPaymentStatus(rec.studentId, 'APPROVED');
       this.notify();
     }
     return approvedRecord;
@@ -747,23 +808,37 @@ export class MockStore {
 
     if (rejectedRecord) {
       setLocal('payments', this.payments);
-      this.logAction(adminName, 'REJECT_PAYMENT', `Rejected payment for ${(rejectedRecord as PaymentRecord).studentName}. Reason: ${reason}`);
-      this.updateStudentPaymentStatus((rejectedRecord as PaymentRecord).studentId, 'REJECTED');
+      const rec = rejectedRecord as PaymentRecord;
+      ApiSync.updatePaymentStatusRemotely({
+        id: paymentId,
+        status: 'REJECTED',
+        rejectionReason: reason,
+        studentId: rec.studentId
+      });
+      this.logAction(adminName, 'REJECT_PAYMENT', `Rejected payment for ${rec.studentName}. Reason: ${reason}`);
+      this.updateStudentPaymentStatus(rec.studentId, 'REJECTED');
       this.notify();
     }
     return rejectedRecord;
   }
 
+  static setUserCourseAccess(studentId: string, status: 'APPROVED' | 'UNPAID' | 'PENDING' | 'REJECTED', adminName: string) {
+    this.updateStudentPaymentStatus(studentId, status);
+    ApiSync.updateUserAccessRemotely(studentId, status);
+    this.logAction(adminName, 'SET_USER_ACCESS', `Admin ${adminName} updated course note access to ${status} for student ${studentId}.`);
+    this.notify();
+  }
+
   // Update profile payment status in registered users list
-  private static updateStudentPaymentStatus(studentId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
+  private static updateStudentPaymentStatus(studentId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING' | 'UNPAID') {
     const users = getLocal<UserProfile[]>('registered_users', []);
-    const updated = users.map((u) => (u.id === studentId ? { ...u, paymentStatus: status } : u));
+    const updated = users.map((u) => (u.id === studentId ? { ...u, paymentStatus: status as any } : u));
     setLocal('registered_users', updated);
 
     // Also update current active session if matching
     const current = getLocal<UserProfile | null>('current_user', null);
     if (current && current.id === studentId) {
-      current.paymentStatus = status;
+      current.paymentStatus = status as any;
       setLocal('current_user', current);
     }
   }
@@ -779,6 +854,7 @@ export class MockStore {
     };
     this.complaints = [newComp, ...this.complaints];
     setLocal('complaints', this.complaints);
+    ApiSync.syncKeyRemotely('complaints', this.complaints);
     this.notify();
     return newComp;
   }
@@ -805,6 +881,7 @@ export class MockStore {
       return c;
     });
     setLocal('complaints', this.complaints);
+    ApiSync.syncKeyRemotely('complaints', this.complaints);
     this.logAction(adminName, 'REPLY_COMPLAINT', `Replied to complaint ${complaintId}`);
     this.notify();
   }
@@ -812,6 +889,7 @@ export class MockStore {
   static updateComplaintStatus(complaintId: string, status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED', adminName: string) {
     this.complaints = this.complaints.map((c) => (c.id === complaintId ? { ...c, status } : c));
     setLocal('complaints', this.complaints);
+    ApiSync.syncKeyRemotely('complaints', this.complaints);
     this.logAction(adminName, 'UPDATE_COMPLAINT_STATUS', `Set complaint ${complaintId} status to ${status}`);
     this.notify();
   }
@@ -825,6 +903,7 @@ export class MockStore {
     };
     this.announcements = [newAnn, ...this.announcements];
     setLocal('announcements', this.announcements);
+    ApiSync.syncKeyRemotely('announcements', this.announcements);
     this.logAction(adminName, 'PUBLISH_ANNOUNCEMENT', `Published announcement: "${ann.title}"`);
     this.broadcastNotification({
       title: `Announcement: ${ann.title}`,
@@ -839,6 +918,7 @@ export class MockStore {
   static deleteAnnouncement(id: string, adminName: string) {
     this.announcements = this.announcements.filter((a) => a.id !== id);
     setLocal('announcements', this.announcements);
+    ApiSync.syncKeyRemotely('announcements', this.announcements);
     this.logAction(adminName, 'DELETE_ANNOUNCEMENT', `Deleted announcement id ${id}`);
     this.notify();
   }
