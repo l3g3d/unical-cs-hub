@@ -211,7 +211,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const normalizedEmail = email.trim().toLowerCase();
       const isTryingAdmin = normalizedEmail === ADMIN_EMAIL;
 
-      // Find registered account
+      // 1. Authoritative server-side authentication & token issue
+      const serverLogin = await ApiSync.login(normalizedEmail, pass);
+      if (serverLogin.success && serverLogin.user) {
+        const authedUser: UserProfile = {
+          ...serverLogin.user,
+          role: isTryingAdmin ? 'admin' : 'student',
+        };
+        setUser(authedUser);
+        localStorage.setItem('unical_hub_current_user', JSON.stringify(authedUser));
+        savePassword(normalizedEmail, pass);
+        await syncRemoteUsers();
+        return { success: true };
+      }
+
+      // If server explicitly reported an authentication failure or suspension, propagate it
+      if (serverLogin && serverLogin.error && !serverLogin.error.includes('Network error') && !serverLogin.error.includes('Failed to fetch')) {
+        return { success: false, error: serverLogin.error };
+      }
+
+      // 2. Offline / local fallback check
       let existing = registeredUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
 
       // Admin fallback if not in list yet
@@ -268,6 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    ApiSync.setAuthToken(null);
     setUser(null);
     localStorage.removeItem('unical_hub_current_user');
   };
@@ -394,8 +414,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Invalid verification code. Please check your email and try again.' };
     }
 
+    // Attempt server registration first to get authoritative token
+    const serverReg = await ApiSync.registerUser({
+      email: normalizedEmail,
+      otp: otp.trim(),
+      password,
+      fullName: record.meta?.fullName || 'Student',
+      matricNumber: record.meta?.matricNumber,
+    });
+
     // Create the student account — role is ALWAYS 'student', never 'admin'
-    const newUser: UserProfile = {
+    const newUser: UserProfile = serverReg?.user || {
       id: 'student-' + Date.now(),
       email: normalizedEmail,
       fullName: record.meta?.fullName || 'Student',
@@ -413,7 +442,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     savePassword(normalizedEmail, password);
 
     // Sync newly registered student to central database immediately
-    ApiSync.registerUserRemotely(newUser);
+    if (!serverReg?.success) {
+      ApiSync.registerUserRemotely(newUser);
+    }
 
     // Log the student in immediately
     setUser(newUser);
@@ -489,6 +520,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Update the stored password
     savePassword(normalizedEmail, newPass);
+    ApiSync.resetPassword({ email: normalizedEmail, otp: otp.trim(), newPassword: newPass });
 
     const nextOtpStore = { ...otpStore };
     delete nextOtpStore['reset_' + normalizedEmail];

@@ -1,0 +1,14 @@
+🎓 Level 100 Computer Science at UNICAL just got an upgrade!
+
+Introducing UNICAL CS HUB — your lecture notes, weekly lecture timetable, continuous assessment tasks, and official department updates all unified in one modern platform.
+
+Built for University of Calabar students:
+📚 All 100L Course Notes (COS 101, CSC 181, GST 111, MTH 101, PHY 101, STA 111)
+📅 Official Lecture Timetable & Venue Guide
+📝 Coursework Assignments & Submission Tracking
+⚡ Instant Student Access & Real-Time Updates
+
+Explore the hub now:
+👉 https://unicalcshub.netlify.app/
+
+#UNICAL #UniversityOfCalabar #ComputerScience #EdTech #CSHub #StudentLife

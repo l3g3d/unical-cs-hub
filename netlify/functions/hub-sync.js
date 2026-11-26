@@ -1,201 +1,316 @@
-// Netlify Serverless Function: Global Hub Database & Synchronization Engine
-// Synchronizes assignments, notes, timetables, venues, payments & students
-// across all devices and accounts for UNICAL CS HUB.
+// Netlify Serverless Function: Authoritative Central Hub Database & Sync Engine
+// Enforces server-side HMAC token authentication, strict Admin vs Student RBAC,
+// isolated student personal records, real binary file storage, and no-cache headers.
 
-import { getStore } from '@netlify/blobs';
+import {
+  ADMIN_EMAIL,
+  verifySessionToken,
+  getScopedHubState,
+  getUploadedFile,
+  checkEmailOrMatricExists,
+  loginUser,
+  verifyAndRegisterStudent,
+  resetPasswordWithServerOtp,
+  changeUserPassword,
+  updateServerSecrets,
+  getPlatformStats,
+  updateCourse,
+  uploadNoteRecord,
+  updateNoteRecord,
+  deleteNoteRecord,
+  addTimetableClassRecord,
+  updateTimetableClassRecord,
+  deleteTimetableClassRecord,
+  updateVenueRecord,
+  createAssignmentRecord,
+  updateAssignmentRecord,
+  deleteAssignmentRecord,
+  publishAnnouncementRecord,
+  deleteAnnouncementRecord,
+  updateCourseRepRecord,
+  submitPaymentRecord,
+  updatePaymentStatusRecord,
+  updateUserAccessRecord,
+  updateUserBanRecord,
+  updateOwnProfileRecord,
+  submitAssignmentWorkRecord,
+  gradeSubmissionRecord,
+  submitComplaintRecord,
+  replyComplaintRecord,
+  updateComplaintStatusRecord,
+  setFullKey,
+} from './lib/hubDb.js';
 
-// In-memory fallback if blobs store is running outside Netlify environment
-let memoryStore = {};
+const NO_CACHE_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+};
 
-function getHubStore() {
-  try {
-    return getStore('unical_hub_global_db');
-  } catch (err) {
-    console.warn('[hub-sync] Netlify Blobs store init notice:', err.message);
-    return null;
-  }
+function jsonResponse(statusCode, bodyObj) {
+  return {
+    statusCode,
+    headers: {
+      ...NO_CACHE_HEADERS,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(bodyObj),
+  };
 }
 
-export const handler = async (event, context) => {
-  // CORS Headers
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Content-Type': 'application/json',
-  };
-
+export const handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers, body: '' };
+    return { statusCode: 204, headers: NO_CACHE_HEADERS, body: '' };
   }
 
-  const store = getHubStore();
-
   try {
-    // 1. GET: Retrieve central database
-    if (event.httpMethod === 'GET') {
-      let data = null;
-      if (store) {
-        try {
-          data = await store.get('hub_state', { type: 'json' });
-        } catch (e) {
-          console.warn('[hub-sync] Blob fetch notice:', e.message);
-        }
-      }
+    const query = event.queryStringParameters || {};
+    const rawAuth = event.headers?.authorization || event.headers?.Authorization || query.token || '';
+    const authResult = rawAuth ? await verifySessionToken(rawAuth) : null;
 
-      if (!data) {
-        data = memoryStore['hub_state'] || null;
-      }
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          data: data || {},
-          timestamp: new Date().toISOString(),
-        }),
-      };
+    if (authResult?.banned) {
+      return jsonResponse(403, {
+        success: false,
+        banned: true,
+        error: `Account suspended (${authResult.banReason || 'Contact administrator'}).`,
+      });
     }
 
-    // 2. POST: Update or merge central database
-    if (event.httpMethod === 'POST') {
-      const payload = JSON.parse(event.body || '{}');
-      const { action, key, data } = payload;
+    const callerUser = authResult?.user || null;
+    const isAdmin = Boolean(callerUser && callerUser.role === 'admin' && callerUser.email?.toLowerCase() === ADMIN_EMAIL);
 
-      let currentState = null;
-      if (store) {
-        try {
-          currentState = await store.get('hub_state', { type: 'json' });
-        } catch {}
-      }
-      if (!currentState) {
-        currentState = memoryStore['hub_state'] || {};
-      }
-
-      let updatedState = { ...currentState };
-
-      if (action === 'FULL_SYNC' && data) {
-        // Deep merge data keys to prevent overwriting existing students or notes
-        updatedState = {
-          ...updatedState,
-          ...data,
-          updatedAt: new Date().toISOString(),
-        };
-      } else if (action === 'SET_KEY' && key) {
-        updatedState[key] = data;
-        updatedState.updatedAt = new Date().toISOString();
-      } else if (action === 'REGISTER_USER' && data) {
-        const users = Array.isArray(updatedState.users) ? updatedState.users : [];
-        const existingIdx = users.findIndex(
-          (u) => u.email?.toLowerCase() === data.email?.toLowerCase() || u.matricNumber?.toUpperCase() === data.matricNumber?.toUpperCase()
-        );
-        if (existingIdx >= 0) {
-          users[existingIdx] = { ...users[existingIdx], ...data };
-        } else {
-          users.unshift(data);
+    // --------------------------------------------------------
+    // GET: File Download OR Scoped Central State Sync
+    // --------------------------------------------------------
+    if (event.httpMethod === 'GET') {
+      // 1. Authenticated binary file download (lecture notes / submissions)
+      if (query.fileId) {
+        if (!callerUser) {
+          return jsonResponse(401, { success: false, error: 'Authentication required to download course files.' });
         }
-        updatedState.users = users;
-        updatedState.updatedAt = new Date().toISOString();
-      } else if (action === 'SUBMIT_PAYMENT' && data) {
-        const payments = Array.isArray(updatedState.payments) ? updatedState.payments : [];
-        const filtered = payments.filter((p) => p.id !== data.id && p.transactionReference !== data.transactionReference);
-        updatedState.payments = [data, ...filtered];
-        updatedState.updatedAt = new Date().toISOString();
-      } else if (action === 'UPDATE_PAYMENT_STATUS' && data) {
-        const { id, status, rejectionReason, approvedBy, studentId } = data;
-        const payments = Array.isArray(updatedState.payments) ? updatedState.payments : [];
-        updatedState.payments = payments.map((p) => {
-          if (p.id === id) {
-            return {
-              ...p,
-              status,
-              rejectionReason,
-              approvedBy,
-              approvedAt: status === 'APPROVED' ? new Date().toISOString() : undefined,
-            };
-          }
-          return p;
-        });
-
-        // Also update the student's user profile paymentStatus
-        if (studentId && Array.isArray(updatedState.users)) {
-          updatedState.users = updatedState.users.map((u) => {
-            if (u.id === studentId || u.email === data.studentEmail) {
-              return { ...u, paymentStatus: status };
-            }
-            return u;
+        const canAccessFiles = isAdmin || callerUser.paymentStatus === 'APPROVED';
+        const fileRecord = await getUploadedFile(query.fileId);
+        if (!fileRecord) {
+          return jsonResponse(404, { success: false, error: 'Requested document not found.' });
+        }
+        // Students with unpaid status can only download files they personally uploaded (assignments), never locked course notes
+        const isOwnUpload = fileRecord.uploadedBy?.toLowerCase() === callerUser.email?.toLowerCase();
+        if (!canAccessFiles && !isOwnUpload) {
+          return jsonResponse(403, {
+            success: false,
+            error: 'Access denied: Complete and verify your ₦500 departmental dues to access lecture notes.',
           });
         }
-        updatedState.updatedAt = new Date().toISOString();
-      } else if (action === 'UPDATE_USER_ACCESS' && data) {
-        const { studentId, paymentStatus } = data;
-        const users = Array.isArray(updatedState.users) ? updatedState.users : [];
-        updatedState.users = users.map((u) => (u.id === studentId ? { ...u, paymentStatus } : u));
-        updatedState.updatedAt = new Date().toISOString();
-      } else if (action === 'UPDATE_USER_BAN' && data) {
-        const { studentId, isBanned, reason, studentEmail } = data;
-        const users = Array.isArray(updatedState.users) ? updatedState.users : [];
-        updatedState.users = users.map((u) => {
-          if (u.id === studentId || (studentEmail && u.email?.toLowerCase() === studentEmail.toLowerCase())) {
-            return {
-              ...u,
-              isBanned,
-              bannedAt: isBanned ? new Date().toISOString() : undefined,
-              banReason: isBanned ? (reason || 'Suspended by Super Administrator') : undefined,
-            };
-          }
-          return u;
-        });
-        updatedState.updatedAt = new Date().toISOString();
-      } else if (action === 'RECORD_LOGIN' && data) {
-        const { email, timestamp } = data;
-        const users = Array.isArray(updatedState.users) ? updatedState.users : [];
-        updatedState.users = users.map((u) => {
-          if (u.email?.toLowerCase() === email?.toLowerCase()) {
-            return {
-              ...u,
-              lastLoginAt: timestamp || new Date().toISOString(),
-              loginCount: (u.loginCount || 0) + 1,
-            };
-          }
-          return u;
-        });
-        updatedState.updatedAt = new Date().toISOString();
+
+        const safeName = String(fileRecord.fileName || 'document.pdf').replace(/["\r\n]/g, '');
+        return {
+          statusCode: 200,
+          headers: {
+            ...NO_CACHE_HEADERS,
+            'Content-Type': fileRecord.mimeType || 'application/pdf',
+            'Content-Disposition': `inline; filename="${safeName}"`,
+          },
+          body: fileRecord.base64,
+          isBase64Encoded: true,
+        };
       }
 
-      // Save to Blob store
-      if (store) {
-        try {
-          await store.setJSON('hub_state', updatedState);
-        } catch (setErr) {
-          console.warn('[hub-sync] Blob write notice:', setErr.message);
-        }
-      }
-      memoryStore['hub_state'] = updatedState;
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          data: updatedState,
-          timestamp: new Date().toISOString(),
-        }),
-      };
+      // 2. Central Hub Sync (strictly role-scoped & personal-data-isolated)
+      const sinceVersion = query.sinceVersion ? Number(query.sinceVersion) : 0;
+      const scoped = await getScopedHubState(callerUser, sinceVersion);
+      return jsonResponse(200, {
+        success: true,
+        authenticated: Boolean(callerUser),
+        role: callerUser?.role || 'public',
+        data: scoped,
+        timestamp: new Date().toISOString(),
+      });
     }
 
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ success: false, error: 'Method Not Allowed' }),
-    };
+    // --------------------------------------------------------
+    // POST: Auth & Domain Mutations (Strictly Role-Verified)
+    // --------------------------------------------------------
+    if (event.httpMethod !== 'POST') {
+      return jsonResponse(405, { success: false, error: 'Method Not Allowed' });
+    }
+
+    let payload = {};
+    try {
+      payload = JSON.parse(event.body || '{}');
+    } catch {
+      return jsonResponse(400, { success: false, error: 'Invalid JSON request body.' });
+    }
+
+    const { action, data = {} } = payload;
+
+    // --- PUBLIC / AUTH ENDPOINTS ---
+    if (action === 'CHECK_USER_EXISTS') {
+      const check = await checkEmailOrMatricExists(data);
+      return jsonResponse(200, { success: true, ...check });
+    }
+
+    if (action === 'LOGIN') {
+      const res = await loginUser(data);
+      if (res.error) return jsonResponse(res.status || 401, { success: false, error: res.error });
+      return jsonResponse(200, { success: true, user: res.user, token: res.token, meta: res.meta });
+    }
+
+    if (action === 'REGISTER_USER' || action === 'VERIFY_OTP_REGISTER') {
+      const res = await verifyAndRegisterStudent(data);
+      if (res.error) return jsonResponse(res.status || 400, { success: false, error: res.error });
+      return jsonResponse(200, { success: true, user: res.user, token: res.token, meta: res.meta });
+    }
+
+    if (action === 'RESET_PASSWORD') {
+      const res = await resetPasswordWithServerOtp(data);
+      if (res.error) return jsonResponse(res.status || 400, { success: false, error: res.error });
+      return jsonResponse(200, { success: true });
+    }
+
+    // --- REQUIRE AUTHENTICATED USER FROM HERE DOWN ---
+    if (!callerUser) {
+      return jsonResponse(401, {
+        success: false,
+        error: 'Session expired or missing authentication token. Please sign in again.',
+      });
+    }
+
+    // --- STUDENT + ADMIN SELF-SERVICE ACTIONS ---
+    if (action === 'CHANGE_PASSWORD') {
+      const res = await changeUserPassword(callerUser, data);
+      if (res.error) return jsonResponse(res.status || 400, { success: false, error: res.error });
+      return jsonResponse(200, { success: true });
+    }
+
+    if (action === 'UPDATE_OWN_PROFILE') {
+      const res = await updateOwnProfileRecord(data, callerUser);
+      return jsonResponse(res.success ? 200 : 400, res);
+    }
+
+    if (action === 'SUBMIT_PAYMENT') {
+      const res = await submitPaymentRecord(data, callerUser);
+      return jsonResponse(res.success ? 200 : 400, res);
+    }
+
+    if (action === 'SUBMIT_ASSIGNMENT') {
+      const res = await submitAssignmentWorkRecord(data, callerUser);
+      return jsonResponse(res.success ? 200 : 400, res);
+    }
+
+    if (action === 'SUBMIT_COMPLAINT') {
+      const res = await submitComplaintRecord(data, callerUser);
+      return jsonResponse(res.success ? 200 : 400, res);
+    }
+
+    // --- STRICT ADMIN-ONLY ENDPOINTS ---
+    if (!isAdmin) {
+      return jsonResponse(403, {
+        success: false,
+        error: 'Forbidden: Departmental administrator privileges are required for this action.',
+      });
+    }
+
+    let result;
+    switch (action) {
+      case 'GET_STATS':
+        result = { success: true, stats: await getPlatformStats() };
+        break;
+      case 'UPDATE_COURSE':
+        result = await updateCourse(data, callerUser);
+        break;
+      case 'UPLOAD_NOTE':
+      case 'ADD_NOTE':
+        result = await uploadNoteRecord(data, callerUser);
+        break;
+      case 'UPDATE_NOTE':
+        result = await updateNoteRecord(data, callerUser);
+        break;
+      case 'DELETE_NOTE':
+        result = await deleteNoteRecord(data.id, callerUser);
+        break;
+      case 'ADD_TIMETABLE':
+      case 'ADD_TIMETABLE_CLASS':
+        result = await addTimetableClassRecord(data, callerUser);
+        break;
+      case 'EDIT_TIMETABLE':
+      case 'UPDATE_TIMETABLE_CLASS':
+        result = await updateTimetableClassRecord(data, callerUser);
+        break;
+      case 'DELETE_TIMETABLE':
+      case 'DELETE_TIMETABLE_CLASS':
+        result = await deleteTimetableClassRecord(data.id, callerUser);
+        break;
+      case 'UPDATE_VENUE':
+      case 'CHANGE_VENUE':
+        result = await updateVenueRecord(data, callerUser);
+        break;
+      case 'CREATE_ASSIGNMENT':
+      case 'ADD_ASSIGNMENT':
+        result = await createAssignmentRecord(data, callerUser);
+        break;
+      case 'UPDATE_ASSIGNMENT':
+        result = await updateAssignmentRecord(data, callerUser);
+        break;
+      case 'DELETE_ASSIGNMENT':
+        result = await deleteAssignmentRecord(data.id, callerUser);
+        break;
+      case 'PUBLISH_ANNOUNCEMENT':
+      case 'ADD_ANNOUNCEMENT':
+        result = await publishAnnouncementRecord(data, callerUser);
+        break;
+      case 'DELETE_ANNOUNCEMENT':
+        result = await deleteAnnouncementRecord(data.id, callerUser);
+        break;
+      case 'UPDATE_COURSE_REP':
+        result = await updateCourseRepRecord(data, callerUser);
+        break;
+      case 'GRADE_SUBMISSION':
+        result = await gradeSubmissionRecord(data, callerUser);
+        break;
+      case 'UPDATE_PAYMENT_STATUS':
+        result = await updatePaymentStatusRecord(data, callerUser);
+        break;
+      case 'UPDATE_USER_ACCESS':
+        result = await updateUserAccessRecord(data, callerUser);
+        break;
+      case 'UPDATE_USER_BAN':
+        result = await updateUserBanRecord(data, callerUser);
+        break;
+      case 'REPLY_COMPLAINT':
+        result = await replyComplaintRecord(data, callerUser);
+        break;
+      case 'UPDATE_COMPLAINT_STATUS':
+        result = await updateComplaintStatusRecord(data, callerUser);
+        break;
+      case 'UPDATE_SERVER_SECRETS':
+        result = await updateServerSecrets(data, callerUser);
+        break;
+      case 'SET_KEY': {
+        const targetKey = payload.key || data.key;
+        const targetVal = data.data !== undefined ? data.data : data;
+        result = await setFullKey(targetKey, targetVal, callerUser);
+        break;
+      }
+      case 'FULL_SYNC': {
+        for (const [k, v] of Object.entries(data)) {
+          await setFullKey(k, v, callerUser);
+        }
+        result = { success: true };
+        break;
+      }
+      default:
+        return jsonResponse(400, { success: false, error: `Unsupported action: "${action}"` });
+    }
+
+    return jsonResponse(result?.success ? 200 : 400, result);
   } catch (err) {
-    console.error('[hub-sync] Error:', err);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ success: false, error: err.message || 'Internal sync error' }),
-    };
+    console.error('[hub-sync] Internal error:', err);
+    return jsonResponse(500, {
+      success: false,
+      error: err.message || 'Internal synchronization server error.',
+    });
   }
 };

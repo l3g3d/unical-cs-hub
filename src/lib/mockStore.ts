@@ -474,22 +474,27 @@ export class MockStore {
       if (!remote || typeof remote !== 'object') return;
 
       let changed = false;
-      if (Array.isArray(remote.notes) && remote.notes.length > 0) {
+      if (Array.isArray(remote.courses)) {
+        this.courses = remote.courses;
+        setLocal('courses', this.courses);
+        changed = true;
+      }
+      if (Array.isArray(remote.notes)) {
         this.notes = remote.notes;
         setLocal('notes', this.notes);
         changed = true;
       }
-      if (Array.isArray(remote.timetable) && remote.timetable.length > 0) {
+      if (Array.isArray(remote.timetable)) {
         this.timetable = remote.timetable;
         setLocal('timetable', this.timetable);
         changed = true;
       }
-      if (Array.isArray(remote.venues) && remote.venues.length > 0) {
+      if (Array.isArray(remote.venues)) {
         this.venues = remote.venues;
         setLocal('venues', this.venues);
         changed = true;
       }
-      if (Array.isArray(remote.assignments) && remote.assignments.length > 0) {
+      if (Array.isArray(remote.assignments)) {
         this.assignments = remote.assignments;
         setLocal('assignments', this.assignments);
         changed = true;
@@ -509,7 +514,7 @@ export class MockStore {
         setLocal('complaints', this.complaints);
         changed = true;
       }
-      if (Array.isArray(remote.announcements) && remote.announcements.length > 0) {
+      if (Array.isArray(remote.announcements)) {
         this.announcements = remote.announcements;
         setLocal('announcements', this.announcements);
         changed = true;
@@ -519,6 +524,11 @@ export class MockStore {
         setLocal('courseRep', this.courseRep);
         changed = true;
       }
+      if (Array.isArray(remote.auditLogs)) {
+        this.auditLogs = sanitizeAuditLogs(remote.auditLogs);
+        setLocal('auditLogs', this.auditLogs);
+        changed = true;
+      }
 
       if (changed) {
         this.notify();
@@ -526,6 +536,10 @@ export class MockStore {
     } catch (err) {
       console.warn('[MockStore] Cloud sync notice:', err);
     }
+  }
+
+  static async forceSync() {
+    return this.initCloudSync();
   }
 
   // --- Getters ---

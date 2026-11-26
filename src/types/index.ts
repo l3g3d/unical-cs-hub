@@ -196,9 +196,12 @@ export interface AiProposedAction {
     | 'DELETE_TIMETABLE_CLASS'
     | 'CHANGE_VENUE'
     | 'CREATE_ASSIGNMENT'
+    | 'DELETE_ASSIGNMENT'
     | 'CREATE_EVENT'
     | 'PUBLISH_ANNOUNCEMENT'
+    | 'DELETE_ANNOUNCEMENT'
     | 'UPLOAD_NOTE'
+    | 'DELETE_NOTE'
     | 'UPDATE_COURSE_REP';
   summary: string;
   details: Record<string, any>;

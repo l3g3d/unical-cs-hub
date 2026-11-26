@@ -19,6 +19,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/ai-assistant"
+  to = "/.netlify/functions/ai-assistant"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200

@@ -15,6 +15,7 @@ import {
   AiProposedAction,
 } from '../types';
 import { MockStore } from '../lib/mockStore';
+import { ApiSync } from '../lib/apiSync';
 import { useAuth } from './AuthContext';
 
 interface DataContextType {
@@ -62,6 +63,7 @@ interface DataContextType {
   updateCourseRep: (updates: Partial<CourseRepresentative>) => void;
   // AI proposed action execution
   executeAiAction: (action: AiProposedAction) => Promise<{ success: boolean; message: string }>;
+  refreshData: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -98,6 +100,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setNotifications(MockStore.getNotifications());
   };
 
+  const refreshData = async () => {
+    await MockStore.forceSync();
+  };
+
   useEffect(() => {
     // Initial cloud sync
     MockStore.initCloudSync();
@@ -105,10 +111,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for reactive store updates
     const unsubscribe = MockStore.subscribe(syncState);
 
-    // Periodic background sync every 25 seconds
+    // Periodic fast background sync every 6 seconds for near real-time updates
     const interval = setInterval(() => {
       MockStore.initCloudSync();
-    }, 25000);
+    }, 6000);
 
     return () => {
       unsubscribe();
@@ -220,7 +226,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const details = action.details;
+      const details = action.details || {};
+
+      // If action is a destructive deletion, pass to server confirmation endpoint
+      if (
+        action.type === 'DELETE_ASSIGNMENT' ||
+        action.type === 'DELETE_NOTE' ||
+        action.type === 'DELETE_TIMETABLE_CLASS' ||
+        action.type === 'DELETE_ANNOUNCEMENT'
+      ) {
+        const res = await ApiSync.callAiAssistant({ confirmAction: action });
+        if (res && res.success) {
+          await MockStore.forceSync();
+          return { success: true, message: res.message || `Confirmed and completed: ${action.summary}` };
+        }
+        // Fallback to local delete if server didn't handle
+        if (action.type === 'DELETE_ASSIGNMENT') deleteAssignment(details.id);
+        if (action.type === 'DELETE_NOTE') deleteNote(details.id);
+        if (action.type === 'DELETE_TIMETABLE_CLASS') deleteTimetableClass(details.id);
+        if (action.type === 'DELETE_ANNOUNCEMENT') deleteAnnouncement(details.id);
+        await MockStore.forceSync();
+        return { success: true, message: `Completed deletion: ${action.summary}` };
+      }
+
       switch (action.type) {
         case 'ADD_TIMETABLE_CLASS': {
           addTimetableClass({
@@ -234,6 +262,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             semester: 'First Semester',
             academicYear: '2026/2027'
           });
+          await MockStore.forceSync();
           return { success: true, message: `Successfully added ${details.courseCode} to timetable for ${details.dayOfWeek} at ${details.startTime}.` };
         }
 
@@ -243,6 +272,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             details.venueName || 'Computing Lecture Hall',
             details.changeNotice || `Venue changed to ${details.venueName}`
           );
+          await MockStore.forceSync();
           return { success: true, message: `Updated venue for ${details.courseCode} to ${details.venueName}.` };
         }
 
@@ -255,6 +285,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             maxScore: details.maxScore || 20,
             createdBy: adminName
           });
+          await MockStore.forceSync();
           return { success: true, message: `Created assignment for ${details.courseCode}: "${details.title}".` };
         }
 
@@ -266,6 +297,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             targetLevel: '100',
             authorName: adminName
           });
+          await MockStore.forceSync();
           return { success: true, message: `Published announcement: "${details.title}".` };
         }
 
@@ -279,6 +311,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             fileName: details.fileName || `${details.courseCode}_Lecture${details.lectureNumber || 1}.pdf`,
             fileSize: details.fileSize || '1.2 MB',
           });
+          await MockStore.forceSync();
           return { success: true, message: `Uploaded note for ${details.courseCode}: Lecture ${details.lectureNumber || 1} - "${details.topic}".` };
         }
 
@@ -289,6 +322,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ...(details.email ? { email: details.email } : {}),
             ...(details.photoUrl ? { photoUrl: details.photoUrl } : {}),
           });
+          await MockStore.forceSync();
           return { success: true, message: `Updated Course Representative details successfully.` };
         }
 
@@ -338,7 +372,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         publishAnnouncement,
         deleteAnnouncement,
         updateCourseRep,
-        executeAiAction
+        executeAiAction,
+        refreshData
       }}
     >
       {children}

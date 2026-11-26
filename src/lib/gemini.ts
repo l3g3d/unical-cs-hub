@@ -1,5 +1,6 @@
 // Google Gemini API Integration for UNICAL CS HUB AI Admin Assistant
 import { AiProposedAction } from '../types';
+import { ApiSync } from './apiSync';
 
 export function getGeminiApiKey(): string {
   if (typeof window !== 'undefined') {
@@ -21,6 +22,9 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   proposedAction?: AiProposedAction;
+  executedTools?: any[];
+  mutated?: boolean;
+  attachmentName?: string;
 }
 
 const SYSTEM_INSTRUCTIONS = `You are "CS HUB AI ASSISTANT", the official academic AI helper for the Course Representative and Administrators of the Computer Science Department (100 Level), University of Calabar, Nigeria.
@@ -386,84 +390,58 @@ function fallbackRuleExtractor(input: string): { message: string; action: AiProp
 
 export async function askGeminiAssistant(
   prompt: string,
-  history: ChatMessage[] = []
-): Promise<{ message: string; action: AiProposedAction | null }> {
+  history: ChatMessage[] = [],
+  attachment?: { fileName: string; mimeType: string; base64Data: string } | null
+): Promise<{
+  message: string;
+  action: AiProposedAction | null;
+  executedTools?: any[];
+  mutated?: boolean;
+}> {
+  // 1. Primary: Authenticated backend AI assistant endpoint (Native Gemini 3.1 Function Calling & Central DB Execution)
   try {
-    const activeKey = getGeminiApiKey();
-
-    // If no key or mock key, use rule-based extractor
-    if (!activeKey || activeKey.includes('your-key')) {
-      return fallbackRuleExtractor(prompt);
-    }
-
-    // Prepare conversational payload
-    const formattedHistory = history.slice(-6).map((h) => ({
+    const formattedHistory = history.slice(-10).map((h) => ({
       role: h.sender === 'user' ? 'user' : 'model',
-      parts: [{ text: h.text }]
+      text: h.text,
     }));
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${activeKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: SYSTEM_INSTRUCTIONS }]
-          },
-          contents: [
-            ...formattedHistory,
-            {
-              role: 'user',
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-          }
-        }),
-      }
-    );
+    const res = await ApiSync.callAiAssistant({
+      message: prompt,
+      history: formattedHistory,
+      attachment,
+    });
 
-    if (!response.ok) {
-      console.warn('Gemini API HTTP Error, falling back to local NLP heuristics:', response.status);
-      return fallbackRuleExtractor(prompt);
-    }
-
-    const data = await response.json();
-    const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!candidateText) {
-      return fallbackRuleExtractor(prompt);
-    }
-
-    try {
-      const parsed = JSON.parse(candidateText);
+    if (res && res.success && res.message) {
       let actionObj: AiProposedAction | null = null;
-      if (parsed.action && parsed.action.type) {
+      if (res.proposedAction && res.proposedAction.type) {
         actionObj = {
-          id: 'act-' + Date.now(),
-          type: parsed.action.type,
-          summary: parsed.action.summary || 'Proposed action',
-          details: parsed.action.details || {},
-          status: 'PENDING'
+          id: res.proposedAction.id || 'act-' + Date.now(),
+          type: res.proposedAction.type,
+          summary: res.proposedAction.summary || 'Confirmation required',
+          details: res.proposedAction.details || {},
+          status: 'PENDING',
         };
       }
       return {
-        message: parsed.message || 'Action formulated. Please review and confirm below.',
-        action: actionObj
-      };
-    } catch {
-      return {
-        message: candidateText,
-        action: null
+        message: res.message,
+        action: actionObj,
+        executedTools: res.executedTools || [],
+        mutated: Boolean(res.mutated),
       };
     }
+    if (res && !res.success && res.error) {
+      console.warn('[Gemini Assistant] Backend returned error:', res.error);
+    }
   } catch (error) {
-    console.warn('Gemini Assistant call failed, using intelligent fallback:', error);
-    return fallbackRuleExtractor(prompt);
+    console.warn('[Gemini Assistant] Network call failed, falling back to local extractor:', error);
   }
+
+  // 2. Intelligent Client-Side NLP Rule Extractor Fallback
+  const fallback = fallbackRuleExtractor(prompt);
+  return {
+    message: fallback.message,
+    action: fallback.action,
+    executedTools: [],
+    mutated: false,
+  };
 }
